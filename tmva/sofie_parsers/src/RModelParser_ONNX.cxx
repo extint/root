@@ -47,6 +47,7 @@ extern ParserFuncSignature ParseReduceProd;
 // Others
 extern ParserFuncSignature ParseBatchNormalization;
 extern ParserFuncSignature ParseConstant;
+extern ParserFuncSignature ParseTile;
 extern ParserFuncSignature ParseTranspose;
 extern ParserFuncSignature ParseRelu;
 extern ParserFuncSignature ParseTanh;
@@ -121,6 +122,8 @@ RModelParser_ONNX::RModelParser_ONNX() noexcept : fOperatorsMapImpl(std::make_un
    // Others
    RegisterOperator("BatchNormalization", ParseBatchNormalization);
    RegisterOperator("Constant", ParseConstant);
+   RegisterOperator("ConstantOfShape", ParseConstant);
+   RegisterOperator("Tile", ParseTile);
    RegisterOperator("Cast", ParseCast);
    RegisterOperator("Concat", ParseConcat);
    RegisterOperator("Conv", ParseConv);
@@ -377,7 +380,11 @@ RModel RModelParser_ONNX::Parse(std::string filename, bool verbose)
          std::cout << "\t initializer " << i << " name " << input_name << " type " << graph.initializer(i).data_type()
                    << std::endl;
 
-      switch (static_cast<ETensorType>(graph.initializer(i).data_type())) {
+      // register also the initialized tensors
+      auto tensor_type = static_cast<ETensorType>(graph.initializer(i).data_type());
+      RegisterTensorType(input_name, tensor_type);
+
+      switch (tensor_type) {
       case ETensorType::FLOAT: {
          std::shared_ptr<void> data(malloc(fLength * sizeof(float)), free);
 

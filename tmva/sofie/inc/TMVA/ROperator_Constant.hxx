@@ -52,13 +52,26 @@ public:
          if (model.CheckIfTensorAlreadyExist(fNX) == false){
            throw std::runtime_error("TMVA SOFIE ConstantOfShape Op Input Tensor is not found in model");
          }
-         // shape is given by values of input in this case. Use empty one
-         fShape = std::vector<size_t> ();
+         // get output shape from input values:
+         // can work only if input is a constant or initialized tensor (or dynamic one)
+         auto dptr = model.GetInitializedTensorData(fNX);
+         auto input_tensor = static_cast<int64_t *>(dptr.get());
+         auto input_shape = model.GetTensorShape(fNX);
+         if (input_shape.size() > 1 )
+            throw std::runtime_error("TMVA SOFIE ConstantOfShape Op Input Tensor has invalid shape");
+         if (input_tensor != nullptr && !input_shape.empty()) {
+            fShape = std::vector<size_t> (input_shape[0]);
+            for (size_t i = 0; i < fShape.size(); i++)
+               fShape[i] = input_tensor[i];
+         } else
+            fShape = {1};  // scalar case
+
          if (fValues.size() != 1)
             throw std::runtime_error("TMVA SOFIE ConstantOfShape Op value Tensor has invalid size " + std::to_string(fValues.size()));
 
          // in case of constant of shape output is an intermediate tensor
          // the values are set in the Generate function, since the output tensor shape is an input
+         //std::cout << " output of constant of shape - add " << fNY << "  " << ConvertShapeToString(fShape) << std::endl;
          // and can be known only at run time
          model.AddIntermediateTensor(fNY, ConvertStringToType(fAttrType), fShape);
          return;
