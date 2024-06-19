@@ -46,6 +46,7 @@ public:
 
    void Initialize(RModel& model){
        //input must be a graph input, or already initialized intermediate tensor
+      size_t length = 1;
       if (!fNX.empty()) {
          // case of ConstantOfShape (since no inputs in case of Constant operator)
          fIsConstantOfShape  = true;
@@ -66,64 +67,36 @@ public:
          } else
             fShape = {1};  // scalar case
 
+         length = ConvertShapeToLength(fShape);
          if (fValues.size() != 1)
             throw std::runtime_error("TMVA SOFIE ConstantOfShape Op value Tensor has invalid size " + std::to_string(fValues.size()));
 
-         // in case of constant of shape output is an intermediate tensor
-         // the values are set in the Generate function, since the output tensor shape is an input
-         //std::cout << " output of constant of shape - add " << fNY << "  " << ConvertShapeToString(fShape) << std::endl;
-         // and can be known only at run time
-         model.AddIntermediateTensor(fNY, ConvertStringToType(fAttrType), fShape);
-         return;
-      }
-      // case of constant operator
-      // in case of standard constant the shape is provided as input
-      if (ConvertShapeToLength(fShape) != fValues.size())
-         throw std::runtime_error("TMVA SOFIE Constant Op has invalid shape : " + ConvertShapeToString(fShape) +
+         T value = fValues[0];
+         fValues = std::vector<T>(length, value);
+
+      } else {
+         // case of constant operator
+         // in case of standard constant the shape is provided as input
+         length = ConvertShapeToLength(fShape);
+         if (length != fValues.size())
+            throw std::runtime_error("TMVA SOFIE Constant Op has invalid shape : " + ConvertShapeToString(fShape) +
                                  " with " + std::to_string(fValues.size()) + " values");
+      }
 
       // we need to create an initialized tensor of type constant to flag to not save it in a weight file
-      // but keep its initialization in the generated code
-      size_t length = ConvertShapeToLength(fShape);
+      // but keep its initialization in the generated code. The values might also be needed in initializing the
+      // following operators using as input Constant or ConstantOfShape
+       // resize fValues to shape length
+
       std::shared_ptr<void> data(malloc(length * sizeof(T)), free);
       std::memcpy(data.get(), (void*) fValues.data(), length * sizeof(T));
       model.AddConstantTensor(fNY, ConvertStringToType(fAttrType), fShape, data);
    }
 
-   std::string Generate(std::string OpName){
-      OpName = "op_" + OpName;
-      // if (!fIsConstantOfShape && fShape.empty()) {
-      //    throw std::runtime_error("TMVA SOFIE Constant called to Generate without being initialized first");
-      // }
-      std::stringstream out;
-      if (fIsConstantOfShape)
-         out << "\n//------ ConstantOfShape\n";
-      // else
-      //    out << "\n//------ Constant\n";
-
-      if (!fIsConstantOfShape) {
-         // code is generated in RModel initialization
-         // out << SP << "fTensor_" << fNY << " = {";
-         // for (size_t i = 0; i < fValues.size(); i++) {
-         //    out << fValues[i];
-         //    if (i < fValues.size()-1) out << ", ";
-         //    if  (i > 0 && i %10 == 0) out << "\n";
-         // }
-         // out << SP << "};\n";
-      }
-      // in case of Constant of Shape shape is given by input. fValues could be empty and all
-      // vector is initialiazed with zero values
-      else {
-          // in case of ConstantOfShape
-          // compute length of output tensor from input tensor
-         out << SP << "size_t outputLength = 1;\n";
-         out << SP << "for (auto& dim: fTensor_" << fNX << ") outputLength *= dim;\n";
-         out << SP << "fTensor_" << fNY << ".assign(outputLength, " << fValues[0] << ");\n";
-      }
-
-      return out.str();
+   std::string Generate(std::string /* OpName */){
+      // no code to generate here. Tensor are defined in Session constructor
+      return "//---------------------------------------\n";
    }
-
 };
 
 }//SOFIE

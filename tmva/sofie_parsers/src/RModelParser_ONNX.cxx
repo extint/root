@@ -160,6 +160,7 @@ RModelParser_ONNX::RModelParser_ONNX() noexcept : fOperatorsMapImpl(std::make_un
    RegisterOperator("EyeLike", ParseEyeLike);
    RegisterOperator("Range", ParseRange);
    RegisterOperator("TopK", ParseTopK);
+   RegisterOperator("Tile", ParseTile);
 }
 
 // Destructor of the parser
