@@ -140,6 +140,27 @@ std::string ConvertDynamicShapeToLength(std::vector<Dim> shape) {
    return length;
 }
 
+std::size_t ConvertDynamicShapeToNumericLength(std::vector<Dim> shape) {
+   // convert generic shape to a string
+   // multiply all the integer specified dimensions of the shape
+   size_t int_length = 0;
+   for (size_t i = 0; i < shape.size(); i++) {
+      if (shape[i].isParam) {
+         throw::std::runtime_error("Cannot convert parametric dimension "+ConvertDynamicShapeToString(shape)+" to numeric");
+      } else {
+         if (int_length == 0)
+            int_length = shape[i].dim;
+         else
+            int_length *= shape[i].dim;
+      }
+   }
+   // multiply the integer components to the parametric one
+   // if (int_length > 0) {
+   //    length += std::to_string(int_length);
+   // }
+   return int_length;
+}
+
 namespace{
 template<typename T>
 static inline void copy_vector_data(int_t no_of_copies, int_t input_size, T* input, T* target){  //only visible within this translation unit
@@ -358,6 +379,50 @@ std::vector<size_t>  UTILITY::UnidirectionalBroadcastShape(std::vector<size_t> s
       throw
          std::runtime_error("TMVA::SOFIE - Error unidirectional broadcasting tensors of shape "
             + ConvertShapeToString(shapeA) + " and " + ConvertShapeToString(shapeB)
+            + " to a common shape.");
+   }
+}
+
+std::vector<Dim>  UTILITY::UnidirectionalBroadcastShape(std::vector<Dim> shapeA, std::vector<Dim> shapeB)
+{
+   size_t sizeA = shapeA.size();
+   size_t sizeB = shapeB.size();
+   // Check if A and B have the same shape
+   if (UTILITY::AreSameShape(shapeA, shapeB)){
+      return shapeA;
+   }
+   // Find the common shape of A and B
+   size_t size = std::max(sizeA, sizeB);
+   if (sizeA < size) {
+      std::vector<Dim> newShapeA(size, 1);
+      size_t offset = size - sizeA;
+      std::copy(shapeA.begin(), shapeA.end(), newShapeA.begin() + offset);
+      shapeA = std::move(newShapeA);
+   }
+   if (sizeB < size) {
+      std::vector<Dim> newShapeB(size, 1);
+      size_t offset = size - sizeB;
+      std::copy(shapeB.begin(), shapeB.end(), newShapeB.begin() + offset);
+      shapeB = std::move(newShapeB);
+   }
+   bool broadcastable = true;
+   for (size_t i = 0; i < size; i++) {
+      if (shapeA[i].dim != shapeB[i].dim && shapeA[i].dim != 1 && shapeB[i].dim != 1) {
+         broadcastable = false;
+         break;
+      }
+   }
+   if (broadcastable) {
+      // The output shape is max(outShape, targetShape)
+      std::vector<Dim> targetShape(size, 1);
+      for (size_t i = 0; i < size; i++) {
+         targetShape[i] = std::max(shapeA[i].dim, shapeB[i].dim);
+      }
+      return targetShape;
+   } else {
+      throw
+         std::runtime_error("TMVA::SOFIE - Error unidirectional broadcasting tensors of shape "
+            + ConvertDynamicShapeToString(shapeA) + " and " + ConvertDynamicShapeToString(shapeB)
             + " to a common shape.");
    }
 }

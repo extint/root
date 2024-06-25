@@ -34,11 +34,6 @@ public:
 
    std::vector<std::vector<size_t>> ShapeInference(std::vector<std::vector<size_t>> input){
       std::vector<size_t> ret = input[0];
-
-      for(auto i : input[0]) std::cout << i << " ";
-      std::cout << std::endl;
-      for(auto i : input[1]) std::cout << i << " ";
-      std::cout << std::endl;
       for(size_t i=0; i < input[1].size(); i++) {
             ret[i]=ret[i]*input[1][i];
       }
@@ -54,11 +49,8 @@ public:
         throw std::runtime_error("TMVA SOFIE Tile Op Input Tensor is not found in model");
       }
       fShapeInput=model.GetTensorShape(fNInput);
-      std::cout<<model.IsInitializedTensor(fNRepeats)<<"\n";
 
-         // Retrieve the data pointer for the repeats tensor
       auto repptr = model.GetInitializedTensorData(fNRepeats);
-      // Cast the raw pointer to the appropriate type (size_t*)
       auto repeat_shape = static_cast<size_t*>(repptr.get());
 
       if (repeat_shape == nullptr) {
@@ -66,19 +58,14 @@ public:
       }
       // Get the shape of the repeats tensor to determine the number of elements
       auto repeats_shape = model.GetTensorShape(fNRepeats);
-      // Ensure the repeats tensor is 1D and get the number of elements
       if (repeats_shape.size() != 1) {
-         throw std::runtime_error("Repeats tensor is not 1D.");
+         throw std::runtime_error(fNRepeats+" tensor must be 1 dimensional but found size "+std::to_string(repeats_shape.size()));
       }
       size_t num_elements = repeats_shape[0];
       // Convert the data to a vector
       std::vector<size_t> repeats_vector(repeat_shape, repeat_shape + num_elements);
 
-      // std::vector<size_t> repeat_shape=model.GetTensorShape(fNRepeats);
       fShapeY = ShapeInference({fShapeInput,repeats_vector})[0];
-      for(auto i : fShapeY) std::cout << i << " ";
-      std::cout << std::endl;
-  
       model.AddIntermediateTensor(fNY, model.GetTensorType(fNInput), fShapeY);
    }
 
@@ -96,16 +83,16 @@ public:
       out << "std::vector<size_t> input_shape = " << ConvertShapeToString(fShapeInput) << ";\n";
       out << "std::vector<size_t> output_shape = " << ConvertShapeToString(fShapeY) << ";\n";
       out << "std::vector<size_t> indices(input_shape.size(), 0);\n";
-      out << "for (size_t i = 0; i < " << output_length << "; ++i) {\n";
+      out << "for(size_t i = 0; i < " << output_length << "; i++) {\n";
       out << SP<<"size_t source_index = 0;\n";
       out << SP<<"size_t stride = 1;\n";
-      out << SP<<"for (int j = input_shape.size() - 1; j >= 0; --j) {\n";
+      out << SP<<"for (int j = input_shape.size() - 1; j >= 0; j--) {\n";
       out << SP<<SP<<"source_index += (indices[j] % input_shape[j]) * stride;\n";
       out << SP<<SP<<"stride *= input_shape[j];\n";
       out << SP<<"}\n";
       out << SP<<"tensor_"<<fNY<<"[i] = tensor_"<<fNInput<<"[source_index];\n";
-      out << SP<<"for (int j = input_shape.size() - 1; j >= 0; --j) {\n";
-      out << SP<<SP<<"if (++indices[j] < output_shape[j]) {\n";
+      out << SP<<"for(int j = input_shape.size() - 1; j >= 0; j--) {\n";
+      out << SP<<SP<<"if(++indices[j] < output_shape[j]) {\n";
       out << SP<<SP<<SP<<"break;\n";
       out << SP<<SP<<"}\n";
       out << SP<<SP<<"indices[j] = 0;\n";

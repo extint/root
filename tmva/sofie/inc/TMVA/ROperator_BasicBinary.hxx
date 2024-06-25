@@ -83,9 +83,9 @@ private:
    std::string fNBroadcadstedB;
    std::string fNY;
 
-   std::vector<size_t> fShapeA;
-   std::vector<size_t> fShapeB;
-   std::vector<size_t> fShapeY;
+   std::vector<Dim> fShapeA;
+   std::vector<Dim> fShapeB;
+   std::vector<Dim> fShapeY;
 
 public:
    ROperator_BasicBinary(){}
@@ -104,6 +104,12 @@ public:
       return ret;
    }
 
+      std::vector<std::vector<Dim>> ShapeInference(std::vector<std::vector<Dim>> input)  {
+      // assume now inputs have same shape (no broadcasting)
+      auto ret = std::vector<std::vector<Dim>>(1, input[0]); // return vector size 1 with first input
+      return ret;
+   }
+
    void Initialize(RModel& model) override {
       // input must be a graph input, or already initialized intermediate tensor
       if (!model.CheckIfTensorAlreadyExist(fNA)){
@@ -112,8 +118,8 @@ public:
       if (!model.CheckIfTensorAlreadyExist(fNB)) {
          throw std::runtime_error(std::string("TMVA SOFIE Binary Op Input Tensor ") + fNB + "is not found in model");
       }
-      fShapeA = model.GetTensorShape(fNA);
-      fShapeB = model.GetTensorShape(fNB);
+      fShapeA = model.GetDynamicTensorShape(fNA);
+      fShapeB = model.GetDynamicTensorShape(fNB);
       bool broadcast = !UTILITY::AreSameShape(fShapeA, fShapeB);
       if (broadcast) {
          // Y is the common shape of A and B
@@ -125,7 +131,7 @@ public:
             if (model.IsInitializedTensor(fNA)) {
                auto data = model.GetInitializedTensorData(fNA);
                std::shared_ptr<void> broadcastedData(
-                  UTILITY::UnidirectionalBroadcast<T>(static_cast<T *>(data.get()), fShapeA, fShapeY),
+                  UTILITY::DynamicUnidirectionalBroadcast<T>(static_cast<T *>(data.get()), fShapeA, fShapeY),
                   std::default_delete<T[]>());
                // Update the data and the shape of A
                model.UpdateInitializedTensor(fNA, model.GetTensorType(fNA), fShapeY, broadcastedData);
@@ -141,7 +147,7 @@ public:
             if (model.IsInitializedTensor(fNB)) {
                auto data = model.GetInitializedTensorData(fNB);
                std::shared_ptr<void> broadcastedData(
-                  UTILITY::UnidirectionalBroadcast<T>(static_cast<T *>(data.get()), fShapeB, fShapeY),
+                  UTILITY::DynamicUnidirectionalBroadcast<T>(static_cast<T *>(data.get()), fShapeB, fShapeY),
                   std::default_delete<T[]>());
                // Update the data and the shape of B
                model.UpdateInitializedTensor(fNB, model.GetTensorType(fNB), fShapeY, broadcastedData);
@@ -171,13 +177,13 @@ public:
       }
       std::stringstream out;
       out << SP << "\n//------ " << BinaryOperatorTrait<T,Op>::Name() << "\n";
-      size_t length = ConvertShapeToLength(fShapeY);
+      std::string length = ConvertDynamicShapeToLength(fShapeY);
       std::string typeName = TensorType<T>::Name();
       // Broadcast A if it's uninitialized
       if (!fNBroadcadstedA.empty()) {
          out << SP << "// Broadcasting uninitialized tensor " << fNA << "\n";
          out << SP << "{\n";
-         out << SP << SP << typeName << "* data = TMVA::Experimental::SOFIE::UTILITY::UnidirectionalBroadcast<" << typeName << ">(tensor_" << fNA << ", " << ConvertShapeToString(fShapeA) << ", " << ConvertShapeToString(fShapeY) << ");\n";
+         out << SP << SP << typeName << "* data = TMVA::Experimental::SOFIE::UTILITY::UnidirectionalBroadcast<" << typeName << ">(tensor_" << fNA << ", " << ConvertDynamicShapeToString(fShapeA) << ", " << ConvertDynamicShapeToString(fShapeY) << ");\n";
          out << SP << SP << "std::copy(data, data + " << length << ", tensor_" << fNBroadcadstedA << ");\n";
          out << SP << SP << "delete[] data;\n";
          out << SP << "}\n";
@@ -186,7 +192,7 @@ public:
       if (!fNBroadcadstedB.empty()) {
          out << SP << "// Broadcasting uninitialized tensor " << fNB << "\n";
          out << SP << "{\n";
-         out << SP << SP << typeName << "* data = TMVA::Experimental::SOFIE::UTILITY::UnidirectionalBroadcast<" << typeName << ">(tensor_" << fNB << ", " << ConvertShapeToString(fShapeB) << ", " << ConvertShapeToString(fShapeY) << ");\n";
+         out << SP << SP << typeName << "* data = TMVA::Experimental::SOFIE::UTILITY::UnidirectionalBroadcast<" << typeName << ">(tensor_" << fNB << ", " << ConvertDynamicShapeToString(fShapeB) << ", " << ConvertDynamicShapeToString(fShapeY) << ");\n";
          out << SP << SP << "std::copy(data, data + " << length << ", tensor_" << fNBroadcadstedB << ");\n";
          out << SP << SP << "delete[] data;\n";
          out << SP << "}\n";

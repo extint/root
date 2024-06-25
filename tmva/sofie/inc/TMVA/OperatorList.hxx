@@ -33,4 +33,7 @@
 #include "TMVA/ROperator_Comparision.hxx"
 #include "TMVA/ROperator_EyeLike.hxx"
 #include "TMVA/ROperator_Range.hxx"
+#include "TMVA/ROperator_Tile.hxx"
+#include "TMVA/ROperator_TopK.hxx"
+#include "TMVA/ROperator_Constant.hxx"
 

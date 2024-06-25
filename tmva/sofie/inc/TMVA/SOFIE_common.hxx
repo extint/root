@@ -80,6 +80,7 @@ std::string ConvertDynamicShapeToString(std::vector<Dim> shape);
 // }
 
 std::string ConvertDynamicShapeToLength(std::vector<Dim> shape);
+std::size_t ConvertDynamicShapeToNumericLength(std::vector<Dim> shape);
 
 class InitializedTensor {
 public:
@@ -88,6 +89,11 @@ public:
       : fConstant(typeConstant), fType{type}, fShape{shape.begin(), shape.end()}, fData{data}
    {
    }
+   // // Dynamic tensor
+   // InitializedTensor(ETensorType type, std::span<Dim> shape, std::shared_ptr<void> data, bool typeConstant = false)
+   //    : fConstant(typeConstant), fType{type}, fShape{shape.begin(), shape.end()}, fData{data}
+   // {
+   // }
 
    ETensorType const &type() const { return fType; }
    std::vector<std::size_t> const &shape() const { return fShape; }
@@ -148,6 +154,7 @@ private:
    bool        fConstant = false;   ///< Flag specifying if tensor is a Constant one (coming from a Constant operator)
    ETensorType fType;               ///< Encodes the type of the data
    std::vector<std::size_t> fShape; ///< The shape of the data in terms of elements in each dimension
+   // std::vector<Dim> fShape; ///< The shape of the data in terms of elements in each dimension
    std::shared_ptr<void> fData;     ///<! Transient shared data
    int fSize = 0;                   ///< The size of the persistent data in bytes (not number of elements!)
    char *fPersistentData = nullptr; ///<[fSize] Persistent version of the data
@@ -183,6 +190,7 @@ std::vector<size_t> MultidirectionalBroadcastShape(std::vector<std::vector<size_
 
 // Unidirectional broadcast two shapes to the same shape
 std::vector<size_t> UnidirectionalBroadcastShape(std::vector<size_t>, std::vector<size_t>);
+std::vector<Dim> UnidirectionalBroadcastShape(std::vector<Dim>, std::vector<Dim>);
 
 std::string Clean_name(std::string input_tensor_name);
 
@@ -280,6 +288,58 @@ T* BroadcastTensor(const T* data, const std::vector<size_t>& shape, const std::v
    return broadcastedData;
 }
 
+template<typename T>
+T* BroadcastTensor(const T* data, const std::vector<Dim>& shape, const std::vector<Dim>& targetShape) {
+   // Size of the shapes
+   size_t size = shape.size();
+   // Current length of the broadcasted tensor
+   auto curLength = ConvertDynamicShapeToNumericLength(shape);
+   auto targetLength = ConvertDynamicShapeToNumericLength(targetShape);
+   // newShape is an aray of size equal to dimension along which we are broadcasting the tensor
+   T* broadcastedData = new T[targetLength];
+   std::copy(data, data + curLength, broadcastedData);
+   // Product of the previous dimensions of targetShape
+   size_t arrayNum = 1;
+   // New broadcasted data
+   std::vector<T> newData(targetLength);
+
+   for (size_t idx = 0; idx < size; idx++) {
+      size_t dim = shape[idx].dim;
+      size_t targetDim = targetShape[idx].dim;
+      if (dim == 1 && targetDim > 1) {
+         // Set the new length of the data
+         size_t newLength = curLength * targetDim;
+         // View the data as a list of arrayNum arrays of size arrayLength
+         size_t arrayLength = curLength / arrayNum;
+         // Broadcast each array dim times
+         if (arrayLength > 1) {
+            // If each array has at least two elements
+            for (size_t arrayIdx = 0; arrayIdx < arrayNum; arrayIdx++) {
+               for (size_t targetIdx = 0; targetIdx < targetDim; targetIdx++) {
+                  size_t offset = arrayIdx * arrayLength * targetDim + targetIdx * arrayLength;
+                  std::copy(broadcastedData + arrayIdx * arrayLength,
+                     broadcastedData + (arrayIdx + 1) * arrayLength,
+                     newData.begin() + offset);
+               }
+            }
+         } else {
+            // If each array has one element
+            for (size_t arrayIdx = 0; arrayIdx < arrayNum; arrayIdx++) {
+               std::fill(newData.begin() + arrayIdx * targetDim,
+                  newData.begin() + (arrayIdx + 1) * targetDim, broadcastedData[arrayIdx]);
+            }
+         }
+         // Update current length
+         curLength = newLength;
+         // Update broadcasted data
+         std::copy(newData.begin(), newData.begin() + newLength, broadcastedData);
+      }
+      // Update the number of arrays
+      arrayNum *= targetDim;
+   }
+   return broadcastedData;
+}
+
 // Unidirectional broadcasting shape to targetShape
 template<typename T>
 T* UnidirectionalBroadcast(const T* data, const std::vector<size_t>& shape, const std::vector<size_t>& targetShape) {
@@ -287,6 +347,18 @@ T* UnidirectionalBroadcast(const T* data, const std::vector<size_t>& shape, cons
    if (shape.size() < targetShape.size()) {
       size_t targetSize = targetShape.size();
       std::vector<size_t> newShape(targetSize, 1);
+      size_t offset = targetSize - shape.size();
+      std::copy(shape.begin(), shape.end(), newShape.begin() + offset);
+      return BroadcastTensor<T>(data, newShape, targetShape);
+   }
+   return BroadcastTensor<T>(data, shape, targetShape);
+}
+template<typename T>
+T* DynamicUnidirectionalBroadcast(const T* data, const std::vector<Dim>& shape, const std::vector<Dim>& targetShape) {
+   // Prepend shape with ones
+   if (shape.size() < targetShape.size()) {
+      size_t targetSize = targetShape.size();
+      std::vector<Dim> newShape(targetSize, 1);
       size_t offset = targetSize - shape.size();
       std::copy(shape.begin(), shape.end(), newShape.begin() + offset);
       return BroadcastTensor<T>(data, newShape, targetShape);
