@@ -18,10 +18,8 @@ ParserFuncSignature ParseTile = [](RModelParser_ONNX &parser, const onnx::NodePr
    }
 
    std::string repeat_name = nodeproto.input(1);
-   if (parser.IsRegisteredTensorType(repeat_name)) {
-    //   input_type = parser.GetTensorType(repeat_name);
-   } else {
-      throw std::runtime_error("TMVA::SOFIE ONNX Parser Tile op has input tensor" + input_name +
+   if (!parser.IsRegisteredTensorType(repeat_name)) {
+      throw std::runtime_error("TMVA::SOFIE ONNX Parser Tile op has input tensor" + repeat_name +
                                " but its type is not yet registered");
    }
 

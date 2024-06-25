@@ -80,7 +80,6 @@ std::string ConvertDynamicShapeToString(std::vector<Dim> shape);
 // }
 
 std::string ConvertDynamicShapeToLength(std::vector<Dim> shape);
-
 class InitializedTensor {
 public:
    InitializedTensor() = default;
@@ -148,6 +147,7 @@ private:
    bool        fConstant = false;   ///< Flag specifying if tensor is a Constant one (coming from a Constant operator)
    ETensorType fType;               ///< Encodes the type of the data
    std::vector<std::size_t> fShape; ///< The shape of the data in terms of elements in each dimension
+   // std::vector<Dim> fShape; ///< The shape of the data in terms of elements in each dimension
    std::shared_ptr<void> fData;     ///<! Transient shared data
    int fSize = 0;                   ///< The size of the persistent data in bytes (not number of elements!)
    char *fPersistentData = nullptr; ///<[fSize] Persistent version of the data

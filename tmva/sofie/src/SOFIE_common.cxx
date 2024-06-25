@@ -139,7 +139,6 @@ std::string ConvertDynamicShapeToLength(std::vector<Dim> shape) {
    }
    return length;
 }
-
 namespace{
 template<typename T>
 static inline void copy_vector_data(int_t no_of_copies, int_t input_size, T* input, T* target){  //only visible within this translation unit
