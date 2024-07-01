@@ -93,8 +93,6 @@ public:
    UpdateOutputTensorList(std::vector<std::string> curr_output_tensor, std::vector<std::string> modify_output_tensor);
    void UpdateInitializedTensor(std::string tensor_name, ETensorType type, std::vector<std::size_t> shape,
                                 std::shared_ptr<void> data);
-   void UpdateInitializedTensor(std::string tensor_name, ETensorType type, std::vector<Dim> shape,
-                                std::shared_ptr<void> data);
    std::shared_ptr<void> GetInitializedTensorData(std::string tensor_name);
 
    void Initialize(int batchSize = -1, bool verbose = false);

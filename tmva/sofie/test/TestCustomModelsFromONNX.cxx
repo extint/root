@@ -21,6 +21,12 @@
 #include "Mul_FromONNX.hxx"
 #include "input_models/references/Mul.ref.hxx"
 
+#include "MulDynamic_FromONNX.hxx"
+#include "input_models/references/MulDynamic.ref.hxx"
+
+#include "MulDynamicNoBroadCast_FromONNX.hxx"
+#include "input_models/references/MulDynamicNoBroadCast.ref.hxx"
+
 #include "Div_FromONNX.hxx"
 #include "input_models/references/Div.ref.hxx"
 
@@ -194,6 +200,9 @@
 
 #include "Sqrt_FromONNX.hxx"
 #include "input_models/references/Sqrt.ref.hxx"
+
+#include "Sqrt_model_dynamic_FromONNX.hxx"
+#include "input_models/references/Sqrt_model_dynamic.ref.hxx"
 
 #include "Reciprocal_FromONNX.hxx"
 #include "input_models/references/Reciprocal.ref.hxx"
@@ -443,6 +452,59 @@ TEST(ONNX, Mul)
       }
    }
 
+TEST(ONNX, MulDynamic)
+   {
+      constexpr float TOLERANCE = DEFAULT_TOLERANCE;
+
+      // Preparing the standard input
+      std::vector<float> input1({-1.3089078664779663, -0.8479329943656921, -0.5372585654258728, -1.295142412185669, -0.13825567066669464, -0.9255757331848145, -1.8299684524536133, 0.9035272002220154, -0.7543330192565918, 1.1535848379135132, 0.04353818669915199, 1.157379388809204});
+      std::vector<float> input2({0.26226192712783813, 1.4590405225753784, -1.1051586866378784, 0.33655494451522827});
+      size_t batch_size1 = 3;
+      size_t dim1 = 4;
+      size_t batch_size2 = 1;
+      size_t dim2 = 4;
+      TMVA_SOFIE_MulDynamic::Session s("MulDynamic_FromONNX.dat", batch_size1, dim2, dim1, batch_size2);
+
+      std::vector<float> output = s.infer(batch_size1, dim1, input1.data(), batch_size2, dim2 , input2.data());
+
+      // Checking output size
+      EXPECT_EQ(output.size(), sizeof(MulDynamic_ExpectedOutput::outputs) / sizeof(float));
+
+      float *correct = MulDynamic_ExpectedOutput::outputs;
+
+      // Checking every output value, one by one
+      for (size_t i = 0; i < output.size(); ++i) {
+         std::cout<<"expected: "<<correct[i]<<"got: "<<output[i]<<std::endl;
+         EXPECT_LE(std::abs(output[i] - correct[i]), TOLERANCE);
+      }
+   }
+
+   TEST(ONNX, MulDynamicNoBroadCast)
+   {
+      constexpr float TOLERANCE = DEFAULT_TOLERANCE;
+
+      // Preparing the standard input
+      std::vector<float> input1({-1.2788445949554443, -0.9844770431518555, 0.38892602920532227, 0.3172966539859772, -0.16023807227611542, -0.749869167804718, -0.911014199256897, -0.46679672598838806, -0.5317427515983582, 1.3448729515075684, -0.737988293170929, -1.4736793041229248});
+      std::vector<float> input2({-0.06963501125574112, -0.7043687105178833, -1.6343672275543213, -0.1326988935470581, -0.1044437512755394, -1.7754945755004883, 0.6466773152351379, -0.9006702303886414, -0.8912118673324585, 1.5253545045852661, -2.0310280323028564, 1.062422752380371});
+      size_t batch_size = 3;
+      size_t dim = 4;
+      // size_t batch_size2 = 3;
+      // size_t dim2 = 4;
+      TMVA_SOFIE_MulDynamicNoBroadCast::Session s("MulDynamicNoBroadCast_FromONNX.dat", batch_size, dim);
+
+      std::vector<float> output = s.infer(batch_size, dim, input1.data(), input2.data());
+
+      // Checking output size
+      EXPECT_EQ(output.size(), sizeof(MulDynamicNoBroadCast_ExpectedOutput::outputs) / sizeof(float));
+
+      float *correct = MulDynamicNoBroadCast_ExpectedOutput::outputs;
+
+      // Checking every output value, one by one
+      for (size_t i = 0; i < output.size(); ++i) {
+         EXPECT_LE(std::abs(output[i] - correct[i]), TOLERANCE);
+      }
+   }
+
 TEST(ONNX, Div)
    {
       constexpr float TOLERANCE = DEFAULT_TOLERANCE;
@@ -626,7 +688,6 @@ float *correct_values = ComplexTopK_ExpectedOutput::values;
 
 // Checking every output value, one by one
 for (size_t i = 0; i < output.size(); ++i) {
-    std::cout << "Output[" << i << "]: " << values[i] << ", Correct[" << i << "]: " << correct_values[i] << std::endl;
     EXPECT_LE(std::abs(values[i] - correct_values[i]), TOLERANCE);
 }
 
@@ -2144,6 +2205,23 @@ TEST(ONNX, Sqrt)
    EXPECT_EQ(output.size(), sizeof(Sqrt_ExpectedOutput::output) / sizeof(float));
 
    float* correct = Sqrt_ExpectedOutput::output;
+
+   for (size_t i = 0; i < output.size(); i++) {
+      EXPECT_LE(std::abs(output[i] - correct[i]), TOLERANCE);
+   }
+}
+
+TEST(ONNX, Sqrt_model_dynamic)
+{
+   constexpr float TOLERANCE = DEFAULT_TOLERANCE;
+
+   std::vector<float> input({0.13019081950187683, 1.887590765953064, 0.7843485474586487, 0.6313804388046265, 0.6820828914642334, 1.0122110843658447, 0.14267124235630035, 0.17384611070156097, 0.967976450920105, 0.24158623814582825, 0.752217173576355, 0.7586784958839417, 0.08820810168981552, 0.8095927238464355, 0.1906266063451767, 0.17051447927951813, 0.6679447293281555, 0.6446378231048584, 1.1540619134902954, 1.6317979097366333, 0.448335200548172, 1.5346695184707642, 0.530795693397522, 0.26218679547309875});
+   size_t batch_size = 3, n = 2, m = 4;
+   TMVA_SOFIE_Sqrt_model_dynamic::Session s("Sqrt_model_dynamic_FromONNX.data", m,n,batch_size);
+   std::vector<float> output = s.infer(batch_size, n, m, input.data());
+
+   EXPECT_EQ(output.size(), sizeof(Sqrt_model_dynamic_ExpectedOutput::output) / sizeof(float));
+   float* correct = Sqrt_model_dynamic_ExpectedOutput::output;
 
    for (size_t i = 0; i < output.size(); i++) {
       EXPECT_LE(std::abs(output[i] - correct[i]), TOLERANCE);

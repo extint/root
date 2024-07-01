@@ -253,14 +253,6 @@ void RModel::UpdateInitializedTensor(std::string tensor_name, ETensorType type, 
     InitializedTensor new_tensor {type, shape, data};
     fInitializedTensors[tensor_name] = new_tensor;
 }
-void RModel::UpdateInitializedTensor(std::string tensor_name, ETensorType type, std::vector<Dim> shape, std::shared_ptr<void> data) {
-    tensor_name = UTILITY::Clean_name(tensor_name);
-    if (!CheckIfTensorAlreadyExist(tensor_name)) {
-        throw std::runtime_error("TMVA-SOFIE: tensor " + tensor_name + " not found when trying to update it");
-    }
-    DynamicTensorInfo new_tensor {type, shape};
-    fDynamicTensorInfos[tensor_name] = new_tensor;
-}
 
 std::shared_ptr<void> RModel::GetInitializedTensorData(std::string tensor_name) {
     auto f = fInitializedTensors.find(tensor_name);
