@@ -272,18 +272,27 @@ public:
       std::stringstream out;
       out << SP << "\n//------ " << BinaryOperatorTrait<T,Op>::Name() << "\n";
       // out<<"std::size_t length = TMVA::Experimental::SOFIE::UTILITY::ConvertShapeToLength("+ConvertDynamicShapeToString(fShapeY)+");\n";
-      out << SP << "std::size_t OutputLength = fTensor_" + fNY + ".size();\n";
-      auto shapeA = ConvertDynamicShapeToString(fShapeA);
-      auto shapeB = ConvertDynamicShapeToString(fShapeB);
-      out << SP << "std::vector<size_t> fShapeA = " << shapeA << ";\n";
-      out << SP << "std::vector<size_t> fShapeB = " << shapeB << ";\n";
-      out << SP << "std::vector<size_t> OutputShape = TMVA::Experimental::SOFIE::UTILITY::UnidirectionalBroadcastShape(fShapeA, fShapeB);\n";
+      if(fIsDynamic && broadcast)
+      {
+         out << SP << "std::size_t OutputLength = fTensor_" + fNY + ".size();\n";
+         auto shapeA = ConvertDynamicShapeToString(fShapeA);
+         auto shapeB = ConvertDynamicShapeToString(fShapeB);
+         out << SP << "std::vector<size_t> fShapeA = " << shapeA << ";\n";
+         out << SP << "std::vector<size_t> fShapeB = " << shapeB << ";\n";
+         out << SP << "std::vector<size_t> OutputShape = TMVA::Experimental::SOFIE::UTILITY::UnidirectionalBroadcastShape(fShapeA, fShapeB);\n";
+      }
+      else {
+         out << SP << "std::size_t OutputLength = "<<ConvertDynamicShapeToLength(fShapeY)<<";\n";
+      }
       std::string typeName = TensorType<T>::Name();
       // Broadcast A if it's uninitialized
       if (!fNBroadcadstedA.empty()) {
          out << SP << "// Broadcasting uninitialized tensor " << fNA << "\n";
          out << SP << "{\n";
-         out << SP << SP << typeName << "* data = TMVA::Experimental::SOFIE::UTILITY::UnidirectionalBroadcast<" << typeName << ">(tensor_" << fNA << ", " << ConvertDynamicShapeToString(fShapeA) << ",OutputShape );\n";
+         if(fIsDynamic && broadcast)
+            out << SP << SP << typeName << "* data = TMVA::Experimental::SOFIE::UTILITY::UnidirectionalBroadcast<" << typeName << ">(tensor_" << fNA << ", " << ConvertDynamicShapeToString(fShapeA) << ", OutputShape );\n";
+         else
+            out << SP << SP << typeName << "* data = TMVA::Experimental::SOFIE::UTILITY::UnidirectionalBroadcast<" << typeName << ">(tensor_" << fNA << ", " << ConvertDynamicShapeToString(fShapeA) << ","<<ConvertDynamicShapeToString(fShapeY)<<" );\n";
          out << SP << SP << "std::copy(data, data + OutputLength, tensor_" << fNBroadcadstedA << ");\n";
          out << SP << SP << "delete[] data;\n";
          out << SP << "}\n";
@@ -292,7 +301,10 @@ public:
       if (!fNBroadcadstedB.empty()) {
          out << SP << "// Broadcasting uninitialized tensor " << fNB << "\n";
          out << SP << "{\n";
-         out << SP << SP << typeName << "* data = TMVA::Experimental::SOFIE::UTILITY::UnidirectionalBroadcast<" << typeName << ">(tensor_" << fNB << ", " << ConvertDynamicShapeToString(fShapeB) << ",OutputShape );\n";
+         if(fIsDynamic && broadcast)
+            out << SP << SP << typeName << "* data = TMVA::Experimental::SOFIE::UTILITY::UnidirectionalBroadcast<" << typeName << ">(tensor_" << fNB << ", " << ConvertDynamicShapeToString(fShapeB) << ",OutputShape );\n";
+         else
+            out << SP << SP << typeName << "* data = TMVA::Experimental::SOFIE::UTILITY::UnidirectionalBroadcast<" << typeName << ">(tensor_" << fNB << ", " << ConvertDynamicShapeToString(fShapeB) << ","<<ConvertDynamicShapeToString(fShapeY)<<" );\n";
          out << SP << SP << "std::copy(data, data + OutputLength, tensor_" << fNBroadcadstedB << ");\n";
          out << SP << SP << "delete[] data;\n";
          out << SP << "}\n";
