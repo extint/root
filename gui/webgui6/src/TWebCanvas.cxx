@@ -51,6 +51,7 @@
 #include "TVirtualX.h"
 #include "TMath.h"
 #include "TTimer.h"
+#include "TThread.h"
 
 #include <cstdio>
 #include <cstring>
@@ -138,6 +139,13 @@ static std::vector<WebFont_t> gWebFonts;
 TWebCanvas::TWebCanvas(TCanvas *c, const char *name, Int_t x, Int_t y, UInt_t width, UInt_t height, Bool_t readonly)
    : TCanvasImp(c, name, x, y, width, height)
 {
+   // Workaround for multi-threaded environment
+   // Ensure main thread id picked when canvas implementation is created -
+   // otherwise it may be assigned in other thread and screw-up gPad access.
+   // Workaround may not work if main thread id was wrongly initialized before
+   // This resolves issue https://github.com/root-project/root/issues/15498
+   TThread::SelfId();
+
    fTimer = new TWebCanvasTimer(*this);
 
    fReadOnly = readonly;
@@ -539,13 +547,15 @@ void TWebCanvas::CreatePadSnapshot(TPadWebSnapshot &paddata, TPad *pad, Long64_t
 
       if (obj->InheritsFrom(THStack::Class())) {
          // workaround for THStack, create extra components before sending to client
-         auto hs = static_cast<THStack *>(obj);
-         if (strlen(obj->GetTitle()) > 0)
-            need_title = obj->GetTitle();
-         TVirtualPad::TContext ctxt(pad, kFALSE);
-         hs->BuildPrimitives(iter.GetOption());
-         has_histo = true;
-         need_frame = true;
+         if (!opt.Contains("PADS") && !opt.Contains("SAME")) {
+            auto hs = static_cast<THStack *>(obj);
+            if (strlen(obj->GetTitle()) > 0)
+               need_title = obj->GetTitle();
+            TVirtualPad::TContext ctxt(pad, kFALSE);
+            hs->BuildPrimitives(iter.GetOption());
+            has_histo = true;
+            need_frame = true;
+         }
       } else if (obj->InheritsFrom(TMultiGraph::Class())) {
          // workaround for TMultiGraph
          if (opt.Contains("A")) {
@@ -646,6 +656,14 @@ void TWebCanvas::CreatePadSnapshot(TPadWebSnapshot &paddata, TPad *pad, Long64_t
          return;
 
       auto f1 = static_cast<TF1 *>(fobj);
+      // check if TF1 can be used
+      if (!f1->IsValid())
+         return;
+
+      // in default case save buffer used as is
+      if ((fTF1UseSave == 1) && f1->HasSave())
+         return;
+
       f1->Save(0, 0, 0, 0, 0, 0);
    };
 
@@ -852,6 +870,18 @@ void TWebCanvas::CreatePadSnapshot(TPadWebSnapshot &paddata, TPad *pad, Long64_t
 
          THStack *hs = static_cast<THStack *>(obj);
 
+         TString hopt = iter.GetOption();
+         hopt.ToLower();
+         if (!hopt.Contains("nostack") && !hopt.Contains("candle") && !hopt.Contains("violin") && !hopt.Contains("pads")) {
+            if (!IsReadOnly() && !fUsedObjs[hs]) {
+               hs->Modified();
+               fUsedObjs[hs] = true;
+            }
+            auto arr = hs->GetStack();
+            arr->SetName(hs->GetName()); // mark list
+            paddata.NewPrimitive(arr, "__ignore_drawing__").SetSnapshot(TWebSnapshot::kObject, arr);
+         }
+
          paddata.NewPrimitive(obj, iter.GetOption()).SetSnapshot(TWebSnapshot::kObject, obj);
 
          first_obj = hs->GetNhists() > 0; // real drawing only if there are histograms
@@ -978,6 +1008,7 @@ void TWebCanvas::CreatePadSnapshot(TPadWebSnapshot &paddata, TPad *pad, Long64_t
       fAllPads[n]->fPrimitives = all_primitives[n];
    }
    fAllPads.clear();
+   fUsedObjs.clear();
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1327,13 +1358,8 @@ Bool_t TWebCanvas::DecodePadOptions(const std::string &msg, bool process_execs)
          AssignStatusBits(r.bits);
          Canvas()->fCw = r.cw;
          Canvas()->fCh = r.ch;
-         if (r.w.size() == 4) {
-            fWindowGeometry = r.w;
-            Canvas()->fWindowTopX = fWindowGeometry[0];
-            Canvas()->fWindowTopY = fWindowGeometry[1];
-            Canvas()->fWindowWidth = fWindowGeometry[2];
-            Canvas()->fWindowHeight = fWindowGeometry[3];
-         }
+         if (r.w.size() == 4)
+            SetWindowGeometry(r.w);
       }
 
       // only if get OPTIONS message from client allow to change gPad
@@ -1393,6 +1419,11 @@ Bool_t TWebCanvas::DecodePadOptions(const std::string &msg, bool process_execs)
             pad->fWNDC = (r.xup - r.xlow) / mother->GetAbsWNDC();
             pad->fHNDC = (r.yup - r.ylow) / mother->GetAbsHNDC();
          }
+      }
+
+      if (r.phi || r.theta) {
+         pad->fPhi = r.phi;
+         pad->fTheta = r.theta;
       }
 
       // copy of code from TPad::ResizePad()
@@ -1482,12 +1513,9 @@ Bool_t TWebCanvas::DecodePadOptions(const std::string &msg, bool process_execs)
             hmin = hmax = -1111;
 
          if (is_stack) {
-            TString opt = objlnk->GetOption();
-            if (!opt.Contains("nostack", TString::kIgnoreCase) && !opt.Contains("lego", TString::kIgnoreCase)) {
-               hist->SetMinimum(hmin);
-               hist->SetMaximum(hmax);
-               hist->SetBit(TH1::kIsZoomed, hmin != hmax);
-            }
+            hist->SetMinimum(hmin);
+            hist->SetMaximum(hmax);
+            hist->SetBit(TH1::kIsZoomed, hmin != hmax);
          } else if (!hist_holder || (hist_holder->IsA() == TScatter::Class())) {
             hist->SetMinimum(hmin);
             hist->SetMaximum(hmax);
@@ -1976,11 +2004,7 @@ Bool_t TWebCanvas::ProcessData(unsigned connid, const std::string &arg)
          Canvas()->fCh = arr->at(5);
          fFixedSize = arr->at(6) > 0;
          arr->resize(4);
-         fWindowGeometry = *arr;
-         Canvas()->fWindowTopX = fWindowGeometry[0];
-         Canvas()->fWindowTopY = fWindowGeometry[1];
-         Canvas()->fWindowWidth = fWindowGeometry[2];
-         Canvas()->fWindowHeight = fWindowGeometry[3];
+         SetWindowGeometry(*arr);
       }
    } else if (arg.compare(0, 7, "POPOBJ:") == 0) {
       auto arr = TBufferJSON::FromJSON<std::vector<std::string>>(arg.substr(7));
@@ -1992,9 +2016,8 @@ Bool_t TWebCanvas::ProcessData(unsigned connid, const std::string &arg)
             while (auto o = next())
                if (obj == o) {
                   TString opt = next.GetOption();
-                  pad->GetListOfPrimitives()->Remove(obj);
-                  pad->GetListOfPrimitives()->AddLast(obj, opt.Data());
-                  pad->Modified();
+                  pad->Remove(obj, kFALSE);
+                  pad->Add(obj, opt.Data());
                   break;
                }
          }
@@ -2070,6 +2093,22 @@ Bool_t TWebCanvas::CheckCanvasModified(bool force_modified)
    return is_any_modified;
 }
 
+//////////////////////////////////////////////////////////////////////////////////////////
+/// Set window geometry as array with coordinates and dimensions
+
+void TWebCanvas::SetWindowGeometry(const std::vector<int> &arr)
+{
+   fWindowGeometry = arr;
+   Canvas()->fWindowTopX = arr[0];
+   Canvas()->fWindowTopY = arr[1];
+   Canvas()->fWindowWidth = arr[2];
+   Canvas()->fWindowHeight = arr[3];
+   if (fWindow) {
+      // position is unreliable and cannot be used
+      // fWindow->SetPosition(arr[0], arr[1]);
+      fWindow->SetGeometry(arr[2], arr[3]);
+   }
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////
 /// Returns window geometry including borders and menus
@@ -2098,12 +2137,7 @@ UInt_t TWebCanvas::GetWindowGeometry(Int_t &x, Int_t &y, UInt_t &w, UInt_t &h)
 
 Bool_t TWebCanvas::PerformUpdate(Bool_t async)
 {
-   if (CheckCanvasModified()) {
-      // configure selected pad that method like TPad::WaitPrimitive() can correctly work
-      // can be removed again once WaitPrimitive implemented differently
-      if (gPad && (gPad->GetCanvas() == Canvas()))
-         gROOT->SetSelectedPad(gPad);
-   }
+   CheckCanvasModified();
 
    CheckDataToSend();
 

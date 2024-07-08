@@ -20,11 +20,10 @@
 #include <ROOT/RNTupleDescriptor.hxx>
 #include <ROOT/RNTupleMetrics.hxx>
 #include <ROOT/RNTupleModel.hxx>
+#include <ROOT/RNTupleSerialize.hxx>
 #include <ROOT/RPagePool.hxx>
 #include <ROOT/RPageSinkBuf.hxx>
 #include <ROOT/RPageStorageFile.hxx>
-#include <memory>
-#include <string_view>
 #ifdef R__ENABLE_DAOS
 # include <ROOT/RPageStorageDaos.hxx>
 #endif
@@ -32,11 +31,38 @@
 #include <Compression.h>
 #include <TError.h>
 
+#include <atomic>
 #include <utility>
+#include <memory>
+#include <string_view>
+#include <cassert>
 
 ROOT::Experimental::Internal::RPageStorage::RPageStorage(std::string_view name) : fMetrics(""), fNTupleName(name) {}
 
 ROOT::Experimental::Internal::RPageStorage::~RPageStorage() {}
+
+void ROOT::Experimental::Internal::RPageStorage::RSealedPage::ChecksumIfEnabled()
+{
+   if (!fHasChecksum)
+      return;
+
+   auto charBuf = reinterpret_cast<const unsigned char *>(fBuffer);
+   auto checksumBuf = const_cast<unsigned char *>(charBuf) + GetDataSize();
+   std::uint64_t xxhash3;
+   RNTupleSerializer::SerializeXxHash3(charBuf, GetDataSize(), xxhash3, checksumBuf);
+}
+
+ROOT::Experimental::RResult<void>
+ROOT::Experimental::Internal::RPageStorage::RSealedPage::VerifyChecksumIfEnabled() const
+{
+   if (!fHasChecksum)
+      return RResult<void>::Success();
+
+   auto success = RNTupleSerializer::VerifyXxHash3(reinterpret_cast<const unsigned char *>(fBuffer), GetDataSize());
+   if (!success)
+      return R__FAIL("page checksum verification failed, data corruption detected");
+   return RResult<void>::Success();
+}
 
 //------------------------------------------------------------------------------
 
@@ -91,7 +117,7 @@ bool ROOT::Experimental::Internal::RPageSource::REntryRange::IntersectsWith(cons
 }
 
 ROOT::Experimental::Internal::RPageSource::RPageSource(std::string_view name, const RNTupleReadOptions &options)
-   : RPageStorage(name), fOptions(options)
+   : RPageStorage(name), fOptions(options), fPagePool(std::make_shared<RPagePool>())
 {
 }
 
@@ -140,6 +166,32 @@ void ROOT::Experimental::Internal::RPageSource::SetEntryRange(const REntryRange 
    fEntryRange = range;
 }
 
+void ROOT::Experimental::Internal::RPageSource::LoadStructure()
+{
+   if (!fHasStructure)
+      LoadStructureImpl();
+   fHasStructure = true;
+}
+
+void ROOT::Experimental::Internal::RPageSource::Attach()
+{
+   LoadStructure();
+   if (!fIsAttached)
+      GetExclDescriptorGuard().MoveIn(AttachImpl());
+   fIsAttached = true;
+}
+
+std::unique_ptr<ROOT::Experimental::Internal::RPageSource> ROOT::Experimental::Internal::RPageSource::Clone() const
+{
+   auto clone = CloneImpl();
+   if (fIsAttached) {
+      clone->GetExclDescriptorGuard().MoveIn(std::move(*GetSharedDescriptorGuard()->Clone()));
+      clone->fHasStructure = true;
+      clone->fIsAttached = true;
+   }
+   return clone;
+}
+
 ROOT::Experimental::NTupleSize_t ROOT::Experimental::Internal::RPageSource::GetNEntries()
 {
    return GetSharedDescriptorGuard()->GetNEntries();
@@ -160,6 +212,69 @@ void ROOT::Experimental::Internal::RPageSource::UnzipCluster(RCluster *cluster)
 {
    if (fTaskScheduler)
       UnzipClusterImpl(cluster);
+}
+
+void ROOT::Experimental::Internal::RPageSource::UnzipClusterImpl(RCluster *cluster)
+{
+   Detail::RNTupleAtomicTimer timer(fCounters->fTimeWallUnzip, fCounters->fTimeCpuUnzip);
+
+   const auto clusterId = cluster->GetId();
+   auto descriptorGuard = GetSharedDescriptorGuard();
+   const auto &clusterDescriptor = descriptorGuard->GetClusterDescriptor(clusterId);
+
+   std::vector<std::unique_ptr<RColumnElementBase>> allElements;
+
+   std::atomic<bool> foundChecksumFailure{false};
+
+   const auto &columnsInCluster = cluster->GetAvailPhysicalColumns();
+   for (const auto columnId : columnsInCluster) {
+      const auto &columnDesc = descriptorGuard->GetColumnDescriptor(columnId);
+
+      allElements.emplace_back(RColumnElementBase::Generate(columnDesc.GetModel().GetType()));
+
+      const auto &pageRange = clusterDescriptor.GetPageRange(columnId);
+      std::uint64_t pageNo = 0;
+      std::uint64_t firstInPage = 0;
+      for (const auto &pi : pageRange.fPageInfos) {
+         ROnDiskPage::Key key(columnId, pageNo);
+         auto onDiskPage = cluster->GetOnDiskPage(key);
+         RSealedPage sealedPage;
+         sealedPage.SetNElements(pi.fNElements);
+         sealedPage.SetHasChecksum(pi.fHasChecksum);
+         sealedPage.SetBufferSize(pi.fLocator.fBytesOnStorage + pi.fHasChecksum * kNBytesPageChecksum);
+         sealedPage.SetBuffer(onDiskPage->GetAddress());
+         R__ASSERT(onDiskPage && (onDiskPage->GetSize() == sealedPage.GetBufferSize()));
+
+         auto taskFunc = [this, columnId, clusterId, firstInPage, sealedPage, element = allElements.back().get(),
+                          &foundChecksumFailure,
+                          indexOffset = clusterDescriptor.GetColumnRange(columnId).fFirstElementIndex]() {
+            auto rv = UnsealPage(sealedPage, *element, columnId);
+            if (!rv) {
+               foundChecksumFailure = true;
+               return;
+            }
+            auto newPage = rv.Unwrap();
+            fCounters->fSzUnzip.Add(element->GetSize() * sealedPage.GetNElements());
+
+            newPage.SetWindow(indexOffset + firstInPage, RPage::RClusterInfo(clusterId, indexOffset));
+            fPagePool->PreloadPage(
+               newPage, RPageDeleter([](const RPage &page, void *) { RPageAllocatorHeap::DeletePage(page); }, nullptr));
+         };
+
+         fTaskScheduler->AddTask(taskFunc);
+
+         firstInPage += pi.fNElements;
+         pageNo++;
+      } // for all pages in column
+   }    // for all columns in cluster
+
+   fCounters->fNPagePopulated.Add(cluster->GetNOnDiskPages());
+
+   fTaskScheduler->Wait();
+
+   if (foundChecksumFailure) {
+      throw RException(R__FAIL("page checksum verification failed, data corruption detected"));
+   }
 }
 
 void ROOT::Experimental::Internal::RPageSource::PrepareLoadCluster(
@@ -279,38 +394,42 @@ void ROOT::Experimental::Internal::RPageSource::EnableDefaultMetrics(const std::
          })});
 }
 
-ROOT::Experimental::Internal::RPage
+ROOT::Experimental::RResult<ROOT::Experimental::Internal::RPage>
 ROOT::Experimental::Internal::RPageSource::UnsealPage(const RSealedPage &sealedPage, const RColumnElementBase &element,
                                                       DescriptorId_t physicalColumnId)
 {
    // Unsealing a page zero is a no-op.  `RPageRange::ExtendToFitColumnRange()` guarantees that the page zero buffer is
    // large enough to hold `sealedPage.fNElements`
-   if (sealedPage.fBuffer == RPage::GetPageZeroBuffer()) {
+   if (sealedPage.GetBuffer() == RPage::GetPageZeroBuffer()) {
       auto page = RPage::MakePageZero(physicalColumnId, element.GetSize());
-      page.GrowUnchecked(sealedPage.fNElements);
+      page.GrowUnchecked(sealedPage.GetNElements());
       return page;
    }
 
-   const auto bytesPacked = element.GetPackedSize(sealedPage.fNElements);
+   auto rv = sealedPage.VerifyChecksumIfEnabled();
+   if (!rv)
+      return R__FORWARD_ERROR(rv);
+
+   const auto bytesPacked = element.GetPackedSize(sealedPage.GetNElements());
    using Allocator_t = RPageAllocatorHeap;
-   auto page = Allocator_t::NewPage(physicalColumnId, element.GetSize(), sealedPage.fNElements);
-   if (sealedPage.fSize != bytesPacked) {
-      fDecompressor->Unzip(sealedPage.fBuffer, sealedPage.fSize, bytesPacked, page.GetBuffer());
+   auto page = Allocator_t::NewPage(physicalColumnId, element.GetSize(), sealedPage.GetNElements());
+   if (sealedPage.GetDataSize() != bytesPacked) {
+      fDecompressor->Unzip(sealedPage.GetBuffer(), sealedPage.GetDataSize(), bytesPacked, page.GetBuffer());
    } else {
       // We cannot simply map the sealed page as we don't know its life time. Specialized page sources
       // may decide to implement to not use UnsealPage but to custom mapping / decompression code.
       // Note that usually pages are compressed.
-      memcpy(page.GetBuffer(), sealedPage.fBuffer, bytesPacked);
+      memcpy(page.GetBuffer(), sealedPage.GetBuffer(), bytesPacked);
    }
 
    if (!element.IsMappable()) {
-      auto tmp = Allocator_t::NewPage(physicalColumnId, element.GetSize(), sealedPage.fNElements);
-      element.Unpack(tmp.GetBuffer(), page.GetBuffer(), sealedPage.fNElements);
+      auto tmp = Allocator_t::NewPage(physicalColumnId, element.GetSize(), sealedPage.GetNElements());
+      element.Unpack(tmp.GetBuffer(), page.GetBuffer(), sealedPage.GetNElements());
       Allocator_t::DeletePage(page);
       page = tmp;
    }
 
-   page.GrowUnchecked(sealedPage.fNElements);
+   page.GrowUnchecked(sealedPage.GetNElements());
    return page;
 }
 
@@ -324,40 +443,59 @@ ROOT::Experimental::Internal::RPageSink::RPageSink(std::string_view name, const 
 ROOT::Experimental::Internal::RPageSink::~RPageSink() {}
 
 ROOT::Experimental::Internal::RPageStorage::RSealedPage
-ROOT::Experimental::Internal::RPageSink::SealPage(const RPage &page, const RColumnElementBase &element,
-                                                  int compressionSetting, void *buf, bool allowAlias)
+ROOT::Experimental::Internal::RPageSink::SealPage(const RSealPageConfig &config)
 {
-   unsigned char *pageBuf = reinterpret_cast<unsigned char *>(page.GetBuffer());
+   assert(config.fPage);
+   assert(config.fElement);
+   assert(config.fBuffer);
+
+   unsigned char *pageBuf = reinterpret_cast<unsigned char *>(config.fPage->GetBuffer());
    bool isAdoptedBuffer = true;
-   auto packedBytes = page.GetNBytes();
+   auto nBytesPacked = config.fPage->GetNBytes();
+   auto nBytesChecksum = config.fWriteChecksum * kNBytesPageChecksum;
 
-   if (!element.IsMappable()) {
-      packedBytes = element.GetPackedSize(page.GetNElements());
-      pageBuf = new unsigned char[packedBytes];
+   if (!config.fElement->IsMappable()) {
+      nBytesPacked = config.fElement->GetPackedSize(config.fPage->GetNElements());
+      pageBuf = new unsigned char[nBytesPacked];
       isAdoptedBuffer = false;
-      element.Pack(pageBuf, page.GetBuffer(), page.GetNElements());
+      config.fElement->Pack(pageBuf, config.fPage->GetBuffer(), config.fPage->GetNElements());
    }
-   auto zippedBytes = packedBytes;
+   auto nBytesZipped = nBytesPacked;
 
-   if ((compressionSetting != 0) || !element.IsMappable() || !allowAlias) {
-      zippedBytes = RNTupleCompressor::Zip(pageBuf, packedBytes, compressionSetting, buf);
+   if ((config.fCompressionSetting != 0) || !config.fElement->IsMappable() || !config.fAllowAlias ||
+       config.fWriteChecksum) {
+      nBytesZipped = RNTupleCompressor::Zip(pageBuf, nBytesPacked, config.fCompressionSetting, config.fBuffer);
       if (!isAdoptedBuffer)
          delete[] pageBuf;
-      pageBuf = reinterpret_cast<unsigned char *>(buf);
+      pageBuf = reinterpret_cast<unsigned char *>(config.fBuffer);
       isAdoptedBuffer = true;
    }
 
    R__ASSERT(isAdoptedBuffer);
 
-   return RSealedPage{pageBuf, static_cast<std::uint32_t>(zippedBytes), page.GetNElements()};
+   RSealedPage sealedPage{pageBuf, static_cast<std::uint32_t>(nBytesZipped + nBytesChecksum),
+                          config.fPage->GetNElements(), config.fWriteChecksum};
+   sealedPage.ChecksumIfEnabled();
+
+   return sealedPage;
 }
 
 ROOT::Experimental::Internal::RPageStorage::RSealedPage
-ROOT::Experimental::Internal::RPageSink::SealPage(const RPage &page, const RColumnElementBase &element,
-                                                  int compressionSetting)
+ROOT::Experimental::Internal::RPageSink::SealPage(const RPage &page, const RColumnElementBase &element)
 {
-   R__ASSERT(fCompressor);
-   return SealPage(page, element, compressionSetting, fCompressor->GetZipBuffer());
+   const auto nBytes = page.GetNBytes() + GetWriteOptions().GetEnablePageChecksums() * kNBytesPageChecksum;
+   if (fSealPageBuffer.size() < nBytes)
+      fSealPageBuffer.resize(nBytes);
+
+   RSealPageConfig config;
+   config.fPage = &page;
+   config.fElement = &element;
+   config.fCompressionSetting = GetWriteOptions().GetCompression();
+   config.fWriteChecksum = GetWriteOptions().GetEnablePageChecksums();
+   config.fAllowAlias = true;
+   config.fBuffer = fSealPageBuffer.data();
+
+   return SealPage(config);
 }
 
 void ROOT::Experimental::Internal::RPageSink::CommitDataset()
@@ -403,8 +541,14 @@ ROOT::Experimental::Internal::RPageStorage::ColumnHandle_t
 ROOT::Experimental::Internal::RPagePersistentSink::AddColumn(DescriptorId_t fieldId, const RColumn &column)
 {
    auto columnId = fDescriptorBuilder.GetDescriptor().GetNPhysicalColumns();
-   fDescriptorBuilder.AddColumn(columnId, columnId, fieldId, column.GetModel(), column.GetIndex(),
-                                column.GetFirstElementIndex());
+   RColumnDescriptorBuilder columnBuilder;
+   columnBuilder.LogicalColumnId(columnId)
+      .PhysicalColumnId(columnId)
+      .FieldId(fieldId)
+      .Model(column.GetModel())
+      .Index(column.GetIndex())
+      .FirstElementIndex(column.GetFirstElementIndex());
+   fDescriptorBuilder.AddColumn(columnBuilder.MakeDescriptor().Unwrap());
    return ColumnHandle_t{columnId, &column};
 }
 
@@ -427,7 +571,13 @@ void ROOT::Experimental::Internal::RPagePersistentSink::UpdateSchema(const RNTup
       auto sourceFieldId = changeset.fModel.GetProjectedFields().GetSourceField(&f)->GetOnDiskId();
       for (const auto &source : descriptor.GetColumnIterable(sourceFieldId)) {
          auto targetId = descriptor.GetNLogicalColumns();
-         fDescriptorBuilder.AddColumn(targetId, source.GetLogicalId(), fieldId, source.GetModel(), source.GetIndex());
+         RColumnDescriptorBuilder columnBuilder;
+         columnBuilder.LogicalColumnId(targetId)
+            .PhysicalColumnId(source.GetLogicalId())
+            .FieldId(fieldId)
+            .Model(source.GetModel())
+            .Index(source.GetIndex());
+         fDescriptorBuilder.AddColumn(columnBuilder.MakeDescriptor().Unwrap());
       }
    };
 
@@ -542,17 +692,19 @@ void ROOT::Experimental::Internal::RPagePersistentSink::CommitPage(ColumnHandle_
    RClusterDescriptor::RPageRange::RPageInfo pageInfo;
    pageInfo.fNElements = page.GetNElements();
    pageInfo.fLocator = CommitPageImpl(columnHandle, page);
+   pageInfo.fHasChecksum = GetWriteOptions().GetEnablePageChecksums();
    fOpenPageRanges.at(columnHandle.fPhysicalId).fPageInfos.emplace_back(pageInfo);
 }
 
 void ROOT::Experimental::Internal::RPagePersistentSink::CommitSealedPage(DescriptorId_t physicalColumnId,
                                                                          const RPageStorage::RSealedPage &sealedPage)
 {
-   fOpenColumnRanges.at(physicalColumnId).fNElements += sealedPage.fNElements;
+   fOpenColumnRanges.at(physicalColumnId).fNElements += sealedPage.GetNElements();
 
    RClusterDescriptor::RPageRange::RPageInfo pageInfo;
-   pageInfo.fNElements = sealedPage.fNElements;
+   pageInfo.fNElements = sealedPage.GetNElements();
    pageInfo.fLocator = CommitSealedPageImpl(physicalColumnId, sealedPage);
+   pageInfo.fHasChecksum = sealedPage.GetHasChecksum();
    fOpenPageRanges.at(physicalColumnId).fPageInfos.emplace_back(pageInfo);
 }
 
@@ -576,11 +728,12 @@ void ROOT::Experimental::Internal::RPagePersistentSink::CommitSealedPageV(
 
    for (auto &range : ranges) {
       for (auto sealedPageIt = range.fFirst; sealedPageIt != range.fLast; ++sealedPageIt) {
-         fOpenColumnRanges.at(range.fPhysicalColumnId).fNElements += sealedPageIt->fNElements;
+         fOpenColumnRanges.at(range.fPhysicalColumnId).fNElements += sealedPageIt->GetNElements();
 
          RClusterDescriptor::RPageRange::RPageInfo pageInfo;
-         pageInfo.fNElements = sealedPageIt->fNElements;
+         pageInfo.fNElements = sealedPageIt->GetNElements();
          pageInfo.fLocator = locators[i++];
+         pageInfo.fHasChecksum = sealedPageIt->GetHasChecksum();
          fOpenPageRanges.at(range.fPhysicalColumnId).fPageInfos.emplace_back(pageInfo);
       }
    }

@@ -20,6 +20,7 @@
 #include <ROOT/RNTupleModel.hxx>
 #include <ROOT/RNTupleUtil.hxx>
 #include <ROOT/RPageStorageFile.hxx>
+#include <ROOT/RClusterPool.hxx>
 #include <TError.h>
 #include <TFile.h>
 #include <TKey.h>
@@ -27,7 +28,8 @@
 #include <deque>
 
 Long64_t ROOT::Experimental::RNTuple::Merge(TCollection *inputs, TFileMergeInfo *mergeInfo)
-{
+// IMPORTANT: this function must not throw, as it is used in exception-unsafe code (TFileMerger).
+try {
    // Check the inputs
    if (!inputs || inputs->GetEntries() < 3 || !mergeInfo)
       return -1;
@@ -94,6 +96,9 @@ Long64_t ROOT::Experimental::RNTuple::Merge(TCollection *inputs, TFileMergeInfo 
    *this = *outFile->Get<RNTuple>(ntupleName.c_str());
 
    return 0;
+} catch (const RException &ex) {
+   Error("RNTuple::Merge", "Exception thrown while merging: %s", ex.what());
+   return -1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -126,10 +131,9 @@ void ROOT::Experimental::Internal::RNTupleMerger::ValidateColumns(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::vector<ROOT::Experimental::Internal::RNTupleMerger::RColumnInfo>
-ROOT::Experimental::Internal::RNTupleMerger::CollectColumns(const RNTupleDescriptor &descriptor)
+void ROOT::Experimental::Internal::RNTupleMerger::CollectColumns(const RNTupleDescriptor &descriptor,
+                                                                 std::vector<RColumnInfo> &columns)
 {
-   std::vector<RColumnInfo> columns;
    // Here we recursively find the columns and fill the RColumnInfo vector
    AddColumnsFromField(columns, descriptor, descriptor.GetFieldZero());
    // Then we either build the internal map (first source) or validate the columns against it (remaning sources)
@@ -139,18 +143,20 @@ ROOT::Experimental::Internal::RNTupleMerger::CollectColumns(const RNTupleDescrip
    } else {
       ValidateColumns(columns);
    }
-   return columns;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void ROOT::Experimental::Internal::RNTupleMerger::AddColumnsFromField(
-   std::vector<ROOT::Experimental::Internal::RNTupleMerger::RColumnInfo> &columns, const RNTupleDescriptor &desc,
-   const RFieldDescriptor &fieldDesc, const std::string &prefix)
+void ROOT::Experimental::Internal::RNTupleMerger::AddColumnsFromField(std::vector<RColumnInfo> &columns,
+                                                                      const RNTupleDescriptor &desc,
+                                                                      const RFieldDescriptor &fieldDesc,
+                                                                      const std::string &prefix)
 {
    for (const auto &field : desc.GetFieldIterable(fieldDesc)) {
       std::string name = prefix + field.GetFieldName() + ".";
       const std::string typeAndVersion = field.GetTypeName() + "." + std::to_string(field.GetTypeVersion());
-      for (const auto &column : desc.GetColumnIterable(field)) {
+      auto columnIter = desc.GetColumnIterable(field);
+      columns.reserve(columns.size() + columnIter.count());
+      for (const auto &column : columnIter) {
          columns.emplace_back(name + std::to_string(column.GetIndex()), typeAndVersion, column.GetPhysicalId(),
                               kInvalidDescriptorId);
       }
@@ -161,8 +167,11 @@ void ROOT::Experimental::Internal::RNTupleMerger::AddColumnsFromField(
 ////////////////////////////////////////////////////////////////////////////////
 void ROOT::Experimental::Internal::RNTupleMerger::Merge(std::span<RPageSource *> sources, RPageSink &destination)
 {
+   std::vector<RColumnInfo> columns;
+   RCluster::ColumnSet_t columnSet;
+
    if (destination.IsInitialized()) {
-      CollectColumns(destination.GetDescriptor());
+      CollectColumns(destination.GetDescriptor(), columns);
    }
 
    std::unique_ptr<RNTupleModel> model; // used to initialize the schema of the output RNTuple
@@ -171,12 +180,18 @@ void ROOT::Experimental::Internal::RNTupleMerger::Merge(std::span<RPageSource *>
    for (const auto &source : sources) {
       source->Attach();
 
+      RClusterPool clusterPool{*source};
+
       // Get a handle on the descriptor (metadata)
       auto descriptor = source->GetSharedDescriptorGuard();
 
       // Collect all the columns
       // The column name : output column id map is only built once
-      auto columns = CollectColumns(descriptor.GetRef());
+      columns.clear(), columnSet.clear();
+      CollectColumns(descriptor.GetRef(), columns);
+      columnSet.reserve(columns.size());
+      for (const auto &column : columns)
+         columnSet.emplace(column.fColumnInputId);
 
       // Create sink from the input model if not initialized
       if (!destination.IsInitialized()) {
@@ -199,9 +214,10 @@ void ROOT::Experimental::Internal::RNTupleMerger::Merge(std::span<RPageSource *>
       auto clusterId = descriptor->FindClusterId(0, 0);
 
       while (clusterId != ROOT::Experimental::kInvalidDescriptorId) {
-         auto &cluster = descriptor->GetClusterDescriptor(clusterId);
+         auto *cluster = clusterPool.GetCluster(clusterId, columnSet);
+         assert(cluster);
+         const auto &clusterDesc = descriptor->GetClusterDescriptor(clusterId);
 
-         std::vector<std::unique_ptr<unsigned char[]>> buffers;
          // We use a std::deque so that references to the contained SealedPageSequence_t, and its iterators, are never
          // invalidated.
          std::deque<RPageStorage::SealedPageSequence_t> sealedPagesV;
@@ -212,37 +228,33 @@ void ROOT::Experimental::Internal::RNTupleMerger::Merge(std::span<RPageSource *>
             // See if this cluster contains this column
             // if not, there is nothing to read/do...
             auto columnId = column.fColumnInputId;
-            if (!cluster.ContainsColumn(columnId)) {
+            if (!clusterDesc.ContainsColumn(columnId)) {
                continue;
             }
 
             // Now get the pages for this column in this cluster
-            const auto &pages = cluster.GetPageRange(columnId);
-            size_t idx{0};
+            const auto &pages = clusterDesc.GetPageRange(columnId);
 
             RPageStorage::SealedPageSequence_t sealedPages;
 
+            std::uint64_t pageNo = 0;
+            sealedPageGroups.reserve(sealedPageGroups.size() + pages.fPageInfos.size());
             // Loop over the pages
             for (const auto &pageInfo : pages.fPageInfos) {
+               ROnDiskPage::Key key{columnId, pageNo};
+               auto onDiskPage = cluster->GetOnDiskPage(key);
+               RPageStorage::RSealedPage sealedPage;
+               sealedPage.SetNElements(pageInfo.fNElements);
+               sealedPage.SetHasChecksum(pageInfo.fHasChecksum);
+               sealedPage.SetBufferSize(pageInfo.fLocator.fBytesOnStorage +
+                                        pageInfo.fHasChecksum * RPageStorage::kNBytesPageChecksum);
+               sealedPage.SetBuffer(onDiskPage->GetAddress());
+               sealedPage.VerifyChecksumIfEnabled().ThrowOnError();
+               R__ASSERT(onDiskPage && (onDiskPage->GetSize() == sealedPage.GetBufferSize()));
 
-               // Each page contains N elements that we are going to read together
-               // LoadSealedPage reads packed/compressed bytes of a page into
-               // a memory buffer provided by a sealed page
-               RClusterIndex clusterIndex(clusterId, idx);
-               Internal::RPageStorage::RSealedPage sealedPage;
-               source->LoadSealedPage(columnId, clusterIndex, sealedPage);
-
-               // The way LoadSealedPage works might require a double call
-               // See the implementation. Here we do this in any case...
-               auto buffer = std::make_unique<unsigned char[]>(sealedPage.fSize);
-               sealedPage.fBuffer = buffer.get();
-               source->LoadSealedPage(columnId, clusterIndex, sealedPage);
-
-               buffers.push_back(std::move(buffer));
                sealedPages.push_back(std::move(sealedPage));
 
-               // Move on to the next index
-               idx += pageInfo.fNElements;
+               ++pageNo;
 
             } // end of loop over pages
 
@@ -256,7 +268,7 @@ void ROOT::Experimental::Internal::RNTupleMerger::Merge(std::span<RPageSource *>
          destination.CommitSealedPageV(sealedPageGroups);
 
          // Commit the clusters
-         destination.CommitCluster(cluster.GetNEntries());
+         destination.CommitCluster(clusterDesc.GetNEntries());
 
          // Go to the next cluster
          clusterId = descriptor->FindNextClusterId(clusterId);

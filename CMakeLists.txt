@@ -289,6 +289,7 @@ if(asan)
   endforeach()
   #add_link_options() not available in our CMake version:
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${ASAN_EXTRA_SHARED_LINKER_FLAGS}")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${ASAN_EXTRA_EXE_LINKER_FLAGS}")
 endif()
 
 #---Enable CTest package -----------------------------------------------------------------------
@@ -784,9 +785,9 @@ Compiler:          ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}
 C++ standard:      ${CMAKE_CXX_STANDARD}
 Compiler flags:
  - C:                         ${CMAKE_C_FLAGS}
- - C (built type specific):   ${CMAKE_C_FLAGS_${_BUILD_TYPE_UPPER}}
+ - C (build type specific):   ${CMAKE_C_FLAGS_${_BUILD_TYPE_UPPER}}
  - C++:                       ${CMAKE_CXX_FLAGS}
- - C++ (built type specific): ${CMAKE_CXX_FLAGS_${_BUILD_TYPE_UPPER}}
+ - C++ (build type specific): ${CMAKE_CXX_FLAGS_${_BUILD_TYPE_UPPER}}
 Linker flags:
  - Executable:     ${CMAKE_EXE_LINKER_FLAGS}
  - Module:         ${CMAKE_MODULE_LINKER_FLAGS}

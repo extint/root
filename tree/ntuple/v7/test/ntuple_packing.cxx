@@ -92,29 +92,52 @@ TEST(Packing, Bitfield)
 
 TEST(Packing, HalfPrecisionFloat)
 {
-   ROOT::Experimental::Internal::RColumnElement<float, ROOT::Experimental::EColumnType::kReal16> element;
-   element.Pack(nullptr, nullptr, 0);
-   element.Unpack(nullptr, nullptr, 0);
+   ROOT::Experimental::Internal::RColumnElement<float, ROOT::Experimental::EColumnType::kReal16> element32_16;
+   ROOT::Experimental::Internal::RColumnElement<double, ROOT::Experimental::EColumnType::kReal16> element64_16;
+   element32_16.Pack(nullptr, nullptr, 0);
+   element32_16.Unpack(nullptr, nullptr, 0);
+   element64_16.Pack(nullptr, nullptr, 0);
+   element64_16.Unpack(nullptr, nullptr, 0);
 
-   float in = 3.14;
+   float fin = 3.14;
    unsigned char buf[2] = {0, 0};
-   element.Pack(buf, &in, 1);
+   element32_16.Pack(buf, &fin, 1);
    // Expected bit representation: 0b01000010 01001000
    EXPECT_EQ(0x48, buf[0]);
    EXPECT_EQ(0x42, buf[1]);
-   float out = 0.;
-   element.Unpack(&out, buf, 1);
-   EXPECT_FLOAT_EQ(3.140625, out);
+   float fout = 0.;
+   element32_16.Unpack(&fout, buf, 1);
+   EXPECT_FLOAT_EQ(3.140625, fout);
 
-   float in4[] = {0.1, 0.2, 0.3, 0.4};
-   std::uint64_t b4;
-   element.Pack(&b4, &in4, 4);
-   float out4[] = {0., 0., 0., 0.};
-   element.Unpack(&out4, &b4, 4);
-   EXPECT_FLOAT_EQ(0.099975586, out4[0]);
-   EXPECT_FLOAT_EQ(0.199951171, out4[1]);
-   EXPECT_FLOAT_EQ(0.300048828, out4[2]);
-   EXPECT_FLOAT_EQ(0.399902343, out4[3]);
+   buf[0] = buf[1] = 0;
+   double din = 3.14;
+   element64_16.Pack(buf, &din, 1);
+   // Expected bit representation: 0b01000010 01001000
+   EXPECT_EQ(0x48, buf[0]);
+   EXPECT_EQ(0x42, buf[1]);
+   double dout = 0.;
+   element64_16.Unpack(&dout, buf, 1);
+   EXPECT_FLOAT_EQ(3.140625, dout);
+
+   float fin4[] = {0.1, 0.2, 0.3, 0.4};
+   std::uint64_t b4 = 0;
+   element32_16.Pack(&b4, &fin4, 4);
+   float fout4[] = {0., 0., 0., 0.};
+   element32_16.Unpack(&fout4, &b4, 4);
+   EXPECT_FLOAT_EQ(0.099975586, fout4[0]);
+   EXPECT_FLOAT_EQ(0.199951171, fout4[1]);
+   EXPECT_FLOAT_EQ(0.300048828, fout4[2]);
+   EXPECT_FLOAT_EQ(0.399902343, fout4[3]);
+
+   double din4[] = {0.1, 0.2, 0.3, 0.4};
+   b4 = 0;
+   element64_16.Pack(&b4, &din4, 4);
+   double dout4[] = {0., 0., 0., 0.};
+   element64_16.Unpack(&dout4, &b4, 4);
+   EXPECT_FLOAT_EQ(0.099975586, dout4[0]);
+   EXPECT_FLOAT_EQ(0.199951171, dout4[1]);
+   EXPECT_FLOAT_EQ(0.300048828, dout4[2]);
+   EXPECT_FLOAT_EQ(0.399902343, dout4[3]);
 }
 
 TEST(Packing, RColumnSwitch)
@@ -283,51 +306,51 @@ TEST(Packing, OnDiskEncoding)
 
    source->LoadSealedPage(fnGetColumnId("int16"), RClusterIndex(0, 0), sealedPage);
    unsigned char expInt16[] = {0x02, 0x05, 0x00, 0x00};
-   EXPECT_EQ(memcmp(sealedPage.fBuffer, expInt16, sizeof(expInt16)), 0);
+   EXPECT_EQ(memcmp(sealedPage.GetBuffer(), expInt16, sizeof(expInt16)), 0);
 
    source->LoadSealedPage(fnGetColumnId("int32"), RClusterIndex(0, 0), sealedPage);
    unsigned char expInt32[] = {0x06, 0x0d, 0x04, 0x0c, 0x02, 0x0a, 0x00, 0x08};
-   EXPECT_EQ(memcmp(sealedPage.fBuffer, expInt32, sizeof(expInt32)), 0);
+   EXPECT_EQ(memcmp(sealedPage.GetBuffer(), expInt32, sizeof(expInt32)), 0);
 
    source->LoadSealedPage(fnGetColumnId("int64"), RClusterIndex(0, 0), sealedPage);
    unsigned char expInt64[] = {0x0e, 0x1d, 0x0c, 0x1c, 0x0a, 0x1a, 0x08, 0x18,
                                0x06, 0x16, 0x04, 0x14, 0x02, 0x12, 0x00, 0x10};
-   EXPECT_EQ(memcmp(sealedPage.fBuffer, expInt64, sizeof(expInt64)), 0);
+   EXPECT_EQ(memcmp(sealedPage.GetBuffer(), expInt64, sizeof(expInt64)), 0);
 
    source->LoadSealedPage(fnGetColumnId("uint16"), RClusterIndex(0, 0), sealedPage);
    unsigned char expUInt16[] = {0x01, 0x02, 0x00, 0x00};
-   EXPECT_EQ(memcmp(sealedPage.fBuffer, expUInt16, sizeof(expUInt16)), 0);
+   EXPECT_EQ(memcmp(sealedPage.GetBuffer(), expUInt16, sizeof(expUInt16)), 0);
 
    source->LoadSealedPage(fnGetColumnId("uint32"), RClusterIndex(0, 0), sealedPage);
    unsigned char expUInt32[] = {0x03, 0x07, 0x02, 0x06, 0x01, 0x05, 0x00, 0x04};
-   EXPECT_EQ(memcmp(sealedPage.fBuffer, expUInt32, sizeof(expUInt32)), 0);
+   EXPECT_EQ(memcmp(sealedPage.GetBuffer(), expUInt32, sizeof(expUInt32)), 0);
 
    source->LoadSealedPage(fnGetColumnId("uint64"), RClusterIndex(0, 0), sealedPage);
    unsigned char expUInt64[] = {0x07, 0x0f, 0x06, 0x0e, 0x05, 0x0d, 0x04, 0x0c,
                                 0x03, 0x0b, 0x02, 0x0a, 0x01, 0x09, 0x00, 0x08};
-   EXPECT_EQ(memcmp(sealedPage.fBuffer, expUInt64, sizeof(expUInt64)), 0);
+   EXPECT_EQ(memcmp(sealedPage.GetBuffer(), expUInt64, sizeof(expUInt64)), 0);
 
    source->LoadSealedPage(fnGetColumnId("float"), RClusterIndex(0, 0), sealedPage);
    unsigned char expFloat[] = {0x01, 0xff, 0x00, 0xff, 0x80, 0x7f, 0x3f, 0x3f};
-   EXPECT_EQ(memcmp(sealedPage.fBuffer, expFloat, sizeof(expFloat)), 0);
+   EXPECT_EQ(memcmp(sealedPage.GetBuffer(), expFloat, sizeof(expFloat)), 0);
 
    source->LoadSealedPage(fnGetColumnId("float16"), RClusterIndex(0, 0), sealedPage);
    unsigned char expFloat16[] = {0x00, 0x3c, 0x66, 0x2e};
-   EXPECT_EQ(memcmp(sealedPage.fBuffer, expFloat16, sizeof(expFloat16)), 0);
+   EXPECT_EQ(memcmp(sealedPage.GetBuffer(), expFloat16, sizeof(expFloat16)), 0);
 
    source->LoadSealedPage(fnGetColumnId("double"), RClusterIndex(0, 0), sealedPage);
    unsigned char expDouble[] = {0x01, 0xff, 0x00, 0xff, 0x00, 0xff, 0x00, 0xff,
                                 0x00, 0xff, 0x00, 0xff, 0xf0, 0xef, 0x3f, 0x7f};
-   EXPECT_EQ(memcmp(sealedPage.fBuffer, expDouble, sizeof(expDouble)), 0);
+   EXPECT_EQ(memcmp(sealedPage.GetBuffer(), expDouble, sizeof(expDouble)), 0);
 
    source->LoadSealedPage(fnGetColumnId("index32"), RClusterIndex(0, 0), sealedPage);
    unsigned char expIndex32[] = {0x01, 0x07, 0x15, 0x00, 0x61, 0x00, 0x02, 0x00};
-   EXPECT_EQ(memcmp(sealedPage.fBuffer, expIndex32, sizeof(expIndex32)), 0);
+   EXPECT_EQ(memcmp(sealedPage.GetBuffer(), expIndex32, sizeof(expIndex32)), 0);
 
    source->LoadSealedPage(fnGetColumnId("index64"), RClusterIndex(0, 0), sealedPage);
    unsigned char expIndex64[] = {0x00, 0x0D, 0x01, 0x00, 0x02, 0x00, 0x03, 0x00,
                                  0x04, 0x00, 0x05, 0x00, 0x06, 0x00, 0x07, 0x00};
-   EXPECT_EQ(memcmp(sealedPage.fBuffer, expIndex64, sizeof(expIndex64)), 0);
+   EXPECT_EQ(memcmp(sealedPage.GetBuffer(), expIndex64, sizeof(expIndex64)), 0);
 
    auto reader = RNTupleReader::Open("ntuple", fileGuard.GetPath());
    EXPECT_EQ(EColumnType::kIndex64, reader->GetModel().GetField("str").GetColumnRepresentative()[0]);

@@ -309,6 +309,7 @@ public:
    void Freeze();
    void Unfreeze();
    bool IsFrozen() const { return fIsFrozen; }
+   bool IsBare() const { return !fDefaultEntry; }
    std::uint64_t GetModelId() const { return fModelId; }
 
    /// Ingests a model for a sub collection and attaches it to the current model
@@ -335,7 +336,7 @@ public:
    const RFieldZero &GetFieldZero() const { return *fFieldZero; }
    const RFieldBase &GetField(std::string_view fieldName) const;
 
-   std::string GetDescription() const { return fDescription; }
+   const std::string &GetDescription() const { return fDescription; }
    void SetDescription(std::string_view description);
 
    /// Estimate the memory usage for this model during writing

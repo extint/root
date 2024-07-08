@@ -1238,7 +1238,7 @@ ROOT::Experimental::RCardinalityField::As64Bit() const
 const ROOT::Experimental::RFieldBase::RColumnRepresentations &
 ROOT::Experimental::RField<char>::GetColumnRepresentations() const
 {
-   static RColumnRepresentations representations({{EColumnType::kChar}}, {{}});
+   static RColumnRepresentations representations({{EColumnType::kChar}}, {});
    return representations;
 }
 
@@ -1263,7 +1263,7 @@ void ROOT::Experimental::RField<char>::AcceptVisitor(Detail::RFieldVisitor &visi
 const ROOT::Experimental::RFieldBase::RColumnRepresentations &
 ROOT::Experimental::RField<std::byte>::GetColumnRepresentations() const
 {
-   static RColumnRepresentations representations({{EColumnType::kByte}}, {{}});
+   static RColumnRepresentations representations({{EColumnType::kByte}}, {});
    return representations;
 }
 
@@ -1394,8 +1394,12 @@ void ROOT::Experimental::RField<float>::SetHalfPrecision()
 const ROOT::Experimental::RFieldBase::RColumnRepresentations &
 ROOT::Experimental::RField<double>::GetColumnRepresentations() const
 {
-   static RColumnRepresentations representations(
-      {{EColumnType::kSplitReal64}, {EColumnType::kReal64}, {EColumnType::kSplitReal32}, {EColumnType::kReal32}}, {});
+   static RColumnRepresentations representations({{EColumnType::kSplitReal64},
+                                                  {EColumnType::kReal64},
+                                                  {EColumnType::kSplitReal32},
+                                                  {EColumnType::kReal32},
+                                                  {EColumnType::kReal16}},
+                                                 {});
    return representations;
 }
 
@@ -1495,7 +1499,7 @@ void ROOT::Experimental::RField<std::int32_t>::GenerateColumnsImpl(const RNTuple
 
 void ROOT::Experimental::RField<std::int32_t>::AcceptVisitor(Detail::RFieldVisitor &visitor) const
 {
-   visitor.VisitIntField(*this);
+   visitor.VisitInt32Field(*this);
 }
 
 //------------------------------------------------------------------------------
@@ -2482,7 +2486,28 @@ ROOT::Experimental::RVectorField::CloneImpl(std::string_view newName) const
 std::size_t ROOT::Experimental::RVectorField::AppendImpl(const void *from)
 {
    auto typedValue = static_cast<const std::vector<char> *>(from);
-   R__ASSERT((typedValue->size() % fItemSize) == 0);
+   // TODO(jblomer): for the following error condition, we print very detailed information before aborting.
+   // This is used to debug writing of CMS MiniAODs and can reverted back to an assert once the error is understood.
+   if ((typedValue->size() % fItemSize) != 0) {
+      const auto &subfield0 = *fSubFields[0];
+      std::string errMsg{"(typedValue->size() % fItemSize) != 0 in RVectorField::AppendImpl\n"};
+      errMsg += "Field name: " + GetQualifiedFieldName() + "\n";
+      errMsg += "Type name: " + GetTypeName() + "\n";
+      errMsg += "Type alias: " + GetTypeAlias() + "\n";
+      errMsg += "fItemSize: " + std::to_string(fItemSize);
+      errMsg += "   typedValue->size(): " + std::to_string(typedValue->size());
+      errMsg += "   fNWritten: " + std::to_string(fNWritten) + "\n";
+      errMsg += "Item type: " + subfield0.GetTypeName() + "\n";
+      errMsg += "Item alias: " + subfield0.GetTypeAlias() + "\n";
+      errMsg += "Item field traits: " + std::to_string(subfield0.GetTraits()) + "\n";
+      errMsg += "Item field size: " + std::to_string(subfield0.GetValueSize()) + "\n";
+      errMsg += "Item field alignment: " + std::to_string(subfield0.GetAlignment()) + "\n";
+      errMsg += "Item field type: " + std::string(typeid(subfield0).name());
+      errMsg += "   demangled: " + ROOT::Internal::GetDemangledTypeName(typeid(subfield0)) + "\n";
+      errMsg += "*from type: " + std::string(typeid(*typedValue).name());
+      errMsg += "   demangled: " + ROOT::Internal::GetDemangledTypeName(typeid(*typedValue)) + "\n";
+      ::Fatal("", kAssertMsg, errMsg.c_str(), __LINE__, __FILE__);
+   }
    std::size_t nbytes = 0;
    auto count = typedValue->size() / fItemSize;
 
@@ -3347,7 +3372,7 @@ void ROOT::Experimental::RVariantField::ReadGlobalImpl(NTupleSize_t globalIndex,
 const ROOT::Experimental::RFieldBase::RColumnRepresentations &
 ROOT::Experimental::RVariantField::GetColumnRepresentations() const
 {
-   static RColumnRepresentations representations({{EColumnType::kSwitch}}, {{}});
+   static RColumnRepresentations representations({{EColumnType::kSwitch}}, {});
    return representations;
 }
 
