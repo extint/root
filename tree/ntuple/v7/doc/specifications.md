@@ -52,7 +52,7 @@ For the ROOT file embedding, the **ROOT::Experimental::RNTuple** object acts as 
 
 ### Anchor schema
 
-The current (class version 5) **ROOT::Experimental::RNTuple** object has the following schema:
+The current (class version 6) **ROOT::Experimental::RNTuple** object has the following schema:
 
 ```
  0                   1                   2                   3
@@ -62,31 +62,31 @@ The current (class version 5) **ROOT::Experimental::RNTuple** object has the fol
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 |        Version Minor          |         Version Patch         |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                                                               | 
+|                                                               |
 +                         Seek Header                           +
 |                                                               |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                                                               | 
+|                                                               |
 +                        Nbytes Header                          +
 |                                                               |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                                                               | 
+|                                                               |
 +                         Len Header                            +
 |                                                               |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                                                               | 
+|                                                               |
 +                         Seek Footer                           +
 |                                                               |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                                                               | 
+|                                                               |
 +                        Nbytes Footer                          +
 |                                                               |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                                                               | 
+|                                                               |
 +                         Len Footer                            +
 |                                                               |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                                                               | 
+|                                                               |
 +                        Max Key Size                           +
 |                                                               |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -101,6 +101,10 @@ as the checksum, are encoded in **big-endian**, unlike the RNTuple payload which
 
 The anchor may evolve in future versions only by appending new fields to the existing schema, but
 fields will not be removed, renamed or reordered.
+
+`Max Key Size` represents the maximum size of an RBlob (associated to one TFile key). Payloads bigger than
+that size will be written as multiple RBlobs/TKeys, and the offsets of all but the first RBlob will be
+written at the end of the first one. This allows bypassing the inherent TKey size limit of 1 GiB.
 
 
 ## Compression Block
@@ -686,8 +690,9 @@ Every inner item (that describes a page) has the following structure:
 ```
 
 Followed by a locator for the page.
-_C(hecksum)_: If set, an XxHash-3 64bit checksum of the uncompressed page data is stored just after the page.
-This bit should be interpreted as the sign bit of the size, i.e. negative values indicate pages with checksums.
+_C(hecksum)_: If set, an XxHash-3 64bit checksum of the compressed page data is stored just after the page.
+This bit should be interpreted as the sign bit of the number of elements, i.e. negative values indicate pages with checksums.
+Note that the page size stored in the locator does _not_ include the checksum.
 
 Depending on the number of pages per column per cluster, every page induces
 a total of 28-36 Bytes of data to be stored in the page list envelope.
@@ -768,24 +773,32 @@ e.g. `std::vector<MyEvent>` or `std::vector<std::vector<float>>`.
 
 ### Fundamental Types
 
-The following fundamental types are stored as `leaf` fields with a single column each:
+The following fundamental types are stored as `leaf` fields with a single column each.
+Type can potentially be stored in multiple possible column types.
+The possible combinations are marked as `W` in the following table
+Additionally, some types allow for reading from certain column types but not to write into them.
+Such cases are marked as `R` in the table.
 
-| C++ Type                         | Default RNTuple Column | Alternative Encoding  |
------------------------------------|------------------------|-----------------------|
-| bool                             | Bit                    |                       |
-| char                             | Char                   |                       |
-| int8_t                           | Int8                   |                       |
-| uint_8_t, unsigned char          | UInt8                  |                       |
-| int16_t                          | SplitInt16             | Int16                 |
-| uint16_t                         | SplitUInt16            | UInt16                |
-| uint32_t                         | SplitUInt32            | UInt32                |
-| int32_t                          | SplitInt32             | Int32                 |
-| uint64_t                         | SplitUInt64            | UInt64                |
-| int64_t                          | SplitInt64             | Int64                 |
-| float                            | SplitReal32            | Real32                |
-| double                           | SplitReal64            | Real64                |
+|               |                                                  Fundamental C++ Type                                                     ||
+| Column Type   | bool | std::byte | char | int8_t | uint8_t | int16_t | uint16_t | int32_t | uint32_t | int64_t | uint64_t | float | double |
+|---------------|:----:|:---------:|:----:|:------:|:-------:|:-------:|:--------:|:-------:|:--------:|:-------:|:--------:|:-----:|:------:|
+| Bit           |  W*  |           |      |        |         |         |          |         |          |         |          |       |        |
+| Byte          |      |     W*    |      |        |         |         |          |         |          |         |          |       |        |
+| Char          |      |           |  W*  |        |         |         |          |         |          |         |          |       |        |
+| Int8          |      |           |      |   W*   |    R    |         |          |         |          |         |          |       |        |
+| UInt8         |      |           |      |   R    |    W*   |         |          |         |          |         |          |       |        |
+| (Split)Int16  |      |           |      |        |         |    W*   |    R     |         |          |         |          |       |        |
+| (Split)UInt16 |      |           |      |        |         |    R    |    W*    |         |          |         |          |       |        |
+| (Split)Int32  |      |           |      |        |         |         |          |    W*   |    R     |    R    |          |       |        |
+| (Split)UInt32 |      |           |      |        |         |         |          |    R    |    W*    |    R    |          |       |        |
+| (Split)Int64  |      |           |      |        |         |         |          |         |          |    W*   |    R     |       |        |
+| (Split)UInt64 |      |           |      |        |         |         |          |         |          |    R    |    W*    |       |        |
+| Real16        |      |           |      |        |         |         |          |         |          |         |          |   W   |   W    |
+| (Split)Real32 |      |           |      |        |         |         |          |         |          |         |          |   W*  |   W    |
+| (Split)Real64 |      |           |      |        |         |         |          |         |          |         |          |       |   W*   |
 
 Possibly available `const` and `volatile` qualifiers of the C++ types are ignored for serialization.
+The default column for serialization is denoted with an asterix.
 If the ntuple is stored uncompressed, the default changes from split encoding to non-split encoding where applicable.
 
 ### Low-precision Floating Points
@@ -805,7 +818,7 @@ and a value column `[1.0, 1.0, 2.0]`.
 #### std::string
 
 A string is stored as a single field with two columns.
-The first (principle) column is of type SplitIndex32.
+The first (principle) column is of type `(Split)Index[64|32]`.
 The second column is of type Char.
 
 #### std::vector\<T\> and ROOT::RVec\<T\>
@@ -946,23 +959,24 @@ The second column is of type Byte.
 This section summarizes key design limits of RNTuple data sets.
 The limits refer to a single RNTuple and do not consider combinations/joins such as "friends" and "chains".
 
-| Limit                                          | Value                        | Reason / Comment                                     |
-|------------------------------------------------|------------------------------|------------------------------------------------------|
-| Maximum volume                                 | 10 PB (theoretically more)   | Assuming 10k cluster groups of 10k clusters of 100MB |
-| Maximum number of elements, entries            | 2^64                         | Using default (Split)Index64, otherwise 2^32         |
-| Maximum cluster & entry size                   | 8TB (depends on pagination)  | Assuming limit of 4B pages of 4kB each               |
-| Maximum page size                              | 2B elements, 256MB-2GB       | #elements * element size, 2GB limit from locator     |
-| Maximum element size                           | 8kB                          | 16bit for number of bits per element                 |
-| Maximum number of column types                 | 64k                          | 16bit for column type                                |
-| Maximum envelope size                          | 2^48B (~280TB)               | Envelope header encoding                             |
-| Maximum frame size                             | 2^62B, 4B items (list frame) | Frame preamble encoding                              |
-| Maximum field / type version                   | 4B                           | Field meta-data encoding                             |
-| Maximum number of fields, columns              | 4B (foreseen: <10M)          | 32bit column / field IDs, list frame limit           |
-| Maximum number of cluster groups               | 4B (foreseen: <10k)          | List frame limits                                    |
-| Maximum number of clusters per group           | 4B (foreseen: <10k)          | List frame limits, cluster group summary encoding    |
-| Maximum number of pages per cluster per column | 4B                           | List frame limits                                    |
-| Maximum number of entries per cluster          | 2^60                         | Cluster summary encoding                             |
-| Maximum string length (meta-data)              | 4GB                          | String encoding                                      |
+| Limit                                          | Value                        | Reason / Comment                                       |
+|------------------------------------------------|------------------------------|--------------------------------------------------------|
+| Maximum volume                                 | 10 PB (theoretically more)   | Assuming 10k cluster groups of 10k clusters of 100MB   |
+| Maximum number of elements, entries            | 2^64                         | Using default (Split)Index64, otherwise 2^32           |
+| Maximum cluster & entry size                   | 8TB (depends on pagination)  | Assuming limit of 4B pages of 4kB each                 |
+| Maximum page size                              | 2B elements, 256MB-2GB       | #elements * element size, 2GB limit from locator       |
+| Maximum element size                           | 8kB                          | 16bit for number of bits per element                   |
+| Maximum number of column types                 | 64k                          | 16bit for column type                                  |
+| Maximum envelope size                          | 2^48B (~280TB)               | Envelope header encoding                               |
+| Maximum frame size                             | 2^62B, 4B items (list frame) | Frame preamble encoding                                |
+| Maximum field / type version                   | 4B                           | Field meta-data encoding                               |
+| Maximum number of fields, columns              | 4B (foreseen: <10M)          | 32bit column / field IDs, list frame limit             |
+| Maximum number of cluster groups               | 4B (foreseen: <10k)          | List frame limits                                      |
+| Maximum number of clusters per group           | 4B (foreseen: <10k)          | List frame limits, cluster group summary encoding      |
+| Maximum number of pages per cluster per column | 4B                           | List frame limits                                      |
+| Maximum number of entries per cluster          | 2^60                         | Cluster summary encoding                               |
+| Maximum string length (meta-data)              | 4GB                          | String encoding                                        |
+| Maximum RBlob size                             | 128 PiB                      | 1GiB / 8B * 1GiB (with maxKeySize=1GiB, offsetSize=8B) |
 
 ## Glossary
 

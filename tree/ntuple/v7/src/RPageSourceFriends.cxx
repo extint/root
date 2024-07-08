@@ -51,7 +51,13 @@ void ROOT::Experimental::Internal::RPageSourceFriends::AddVirtualField(const RNT
 
    for (const auto &c: originDesc.GetColumnIterable(originField)) {
       auto physicalId = c.IsAliasColumn() ? fIdBiMap.GetVirtualId({originIdx, c.GetPhysicalId()}) : fNextId;
-      fBuilder.AddColumn(fNextId, physicalId, virtualFieldId, c.GetModel(), c.GetIndex());
+      RColumnDescriptorBuilder columnBuilder;
+      columnBuilder.LogicalColumnId(fNextId)
+         .PhysicalColumnId(physicalId)
+         .FieldId(virtualFieldId)
+         .Model(c.GetModel())
+         .Index(c.GetIndex());
+      fBuilder.AddColumn(columnBuilder.MakeDescriptor().Unwrap()).ThrowOnError();
       fIdBiMap.Insert({originIdx, c.GetLogicalId()}, fNextId);
       fNextId++;
    }
@@ -117,13 +123,15 @@ ROOT::Experimental::RNTupleDescriptor ROOT::Experimental::Internal::RPageSourceF
 }
 
 std::unique_ptr<ROOT::Experimental::Internal::RPageSource>
-ROOT::Experimental::Internal::RPageSourceFriends::Clone() const
+ROOT::Experimental::Internal::RPageSourceFriends::CloneImpl() const
 {
    std::vector<std::unique_ptr<RPageSource>> cloneSources;
    cloneSources.reserve(fSources.size());
    for (const auto &f : fSources)
       cloneSources.emplace_back(f->Clone());
-   return std::make_unique<RPageSourceFriends>(fNTupleName, cloneSources);
+   auto clone = std::make_unique<RPageSourceFriends>(fNTupleName, cloneSources);
+   clone->fIdBiMap = fIdBiMap;
+   return clone;
 }
 
 ROOT::Experimental::Internal::RPageStorage::ColumnHandle_t

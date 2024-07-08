@@ -19,14 +19,21 @@ import { getRootColors } from './colors.mjs';
 class ObjectPainter extends BasePainter {
 
    /** @summary constructor
-     * @param {object|string} dom - dom element or identifier
+     * @param {object|string} dom - dom element or identifier or pad painter
      * @param {object} obj - object to draw
      * @param {string} [opt] - object draw options */
    constructor(dom, obj, opt) {
+      let pp = null;
+      if (isFunc(dom?.forEachPainterInPad) && (dom?.this_pad_name !== undefined)) {
+         pp = dom;
+         dom = pp.getDom();
+      }
+
       super(dom);
+
       // this.draw_g = undefined; // container for all drawn objects
       // this._main_painter = undefined;  // main painter in the correspondent pad
-      this.pad_name = dom ? this.selectCurrentPad() : ''; // name of pad where object is drawn
+      this.pad_name = pp?.this_pad_name ?? ''; // name of pad where object is drawn
       this.assignObject(obj);
       if (isStr(opt))
          this.options = { original: opt };
@@ -44,9 +51,11 @@ class ObjectPainter extends BasePainter {
    /** @summary Assigns pad name where element will be drawn
      * @desc Should happend before first draw of element is performed, only for special use case
      * @param {string} [pad_name] - on which subpad element should be draw, if not specified - use current
-     * @protected */
+     * @protected
+     * @deprecated to be removed in v8 */
    setPadName(pad_name) {
-      this.pad_name = isStr(pad_name) ? pad_name : this.selectCurrentPad();
+      // console.warn('setPadName is deprecated, to be removed in v8');
+      this.pad_name = isStr(pad_name) ? pad_name : '';
    }
 
    /** @summary Returns pad name where object is drawn */
@@ -111,10 +120,13 @@ class ObjectPainter extends BasePainter {
      * @protected */
    matchObjectType(arg) {
       const clname = this.getClassName();
-      if (!arg || !clname) return false;
-      if (isStr(arg)) return arg === clname;
-      if (isStr(arg._typename)) return arg._typename === clname;
-      return clname.match(arg);
+      if (!arg || !clname)
+         return false;
+      if (isStr(arg))
+         return arg === clname;
+      if (isStr(arg._typename))
+         return arg._typename === clname;
+      return !!clname.match(arg);
    }
 
    /** @summary Change item name
@@ -142,6 +154,13 @@ class ObjectPainter extends BasePainter {
       this.options_store = Object.assign({}, this.options);
    }
 
+   /** @summary Return dom argument for object drawing
+    * @desc Can be used to draw other objects on same pad / same dom element
+    * @protected */
+   getDrawDom() {
+      return this.getPadPainter() || this.getDom();
+   }
+
    /** @summary Return actual draw options as string
      * @param ignore_pad - do not include pad settings into histogram draw options
      * @desc if options are not modified - returns original string which was specified for object draw */
@@ -154,11 +173,14 @@ class ObjectPainter extends BasePainter {
          if (!this.options_store || pp?._interactively_changed)
             changed = true;
          else {
-            for (const k in this.options) {
-               if (this.options[k] !== this.options_store[k])
-                  changed = true;
+            for (const k in this.options_store) {
+               if (this.options[k] !== this.options_store[k]) {
+                  if ((k[0] !== '_') && (k[0] !== '$') && (k[0].toLowerCase() !== k[0]))
+                     changed = true;
                }
+            }
          }
+
          if (changed && isFunc(this.options.asString))
             return this.options.asString(this.isMainPainter(), ignore_pad ? null : pp?.getRootPad());
       }
@@ -392,6 +414,19 @@ class ObjectPainter extends BasePainter {
       return !isObject(main) ? true : this._main_painter_id === main.getUniqueId(true);
    }
 
+   /** @summary Return primary object
+     * @private */
+   getPrimary() {
+      let res = null;
+      if (this.isSecondary()) {
+         this.forEachPainter(p => {
+            if (this.isSecondary(p))
+               res = p;
+         });
+      }
+      return res;
+   }
+
    /** @summary Provides identifier on server for requested sublement */
    getSnapId(subelem) {
       if (!this.snapid)
@@ -419,13 +454,11 @@ class ObjectPainter extends BasePainter {
    /** @summary Method selects current pad name
      * @param {string} [new_name] - when specified, new current pad name will be configured
      * @return {string} previous selected pad or actual pad when new_name not specified
-     * @private */
-   selectCurrentPad(new_name) {
-      const svg = this.getCanvSvg();
-      if (svg.empty()) return '';
-      const curr = svg.property('current_pad');
-      if (new_name !== undefined) svg.property('current_pad', new_name);
-      return curr;
+     * @private
+     * @deprecated to be removed in v8 */
+   selectCurrentPad() {
+      console.warn('selectCurrentPad is deprecated, will be removed in v8');
+      return '';
    }
 
    /** @summary returns pad painter
@@ -594,32 +627,30 @@ class ObjectPainter extends BasePainter {
    }
 
    /** @summary Add painter to pad list of painters
-     * @param {string} [pad_name] - optional pad name where painter should be add
-     * @desc Normally one should use {@link ensureTCanvas} to add painter to pad list of primitives
+     * @desc Normally called from {@link ensureTCanvas} function when new painter is created
      * @protected */
-   addToPadPrimitives(pad_name) {
-      if (pad_name !== undefined) this.setPadName(pad_name);
-      const pp = this.getPadPainter(pad_name); // important - pad_name must be here, otherwise PadPainter class confuses itself
+   addToPadPrimitives() {
+      const pp = this.getPadPainter();
 
-      if (!pp || (pp === this)) return false;
+      if (!pp || (pp === this))
+         return null;
 
       if (pp.painters.indexOf(this) < 0)
          pp.painters.push(this);
 
-      if (!this.rstyle && pp.next_rstyle)
-         this.rstyle = pp.next_rstyle;
-
-      return true;
+      return pp;
    }
 
    /** @summary Remove painter from pad list of painters
      * @protected */
    removeFromPadPrimitives() {
       const pp = this.getPadPainter();
-      if (!pp || (pp === this)) return false;
+      if (!pp || (pp === this))
+         return false;
 
       const k = pp.painters.indexOf(this);
-      if (k >= 0) pp.painters.splice(k, 1);
+      if (k >= 0)
+         pp.painters.splice(k, 1);
       return true;
    }
 
@@ -764,6 +795,9 @@ class ObjectPainter extends BasePainter {
          res = this.redraw(reason);
 
       return getPromise(res).then(() => {
+         if (arg === 'attribute')
+            return this.getPadPainter()?.redrawLegend();
+      }).then(() => {
          // inform GED that something changes
          const canp = this.getCanvPainter();
 
@@ -833,7 +867,7 @@ class ObjectPainter extends BasePainter {
       if (p > 0) cl = cl.slice(p+2);
       const title = (cl && name) ? `${cl}:${name}` : (cl || name || 'object');
 
-      menu.add(`header:${title}`);
+      menu.header(title);
 
       const size0 = menu.size();
 
@@ -1352,7 +1386,7 @@ class ObjectPainter extends BasePainter {
 
          if (menu.exec_items?.length) {
             if (_menu.size() > 0)
-               _menu.add('separator');
+               _menu.separator();
 
             let lastclname;
 
@@ -1362,7 +1396,7 @@ class ObjectPainter extends BasePainter {
                item.$menu = menu;
 
                if (item.fClassName && lastclname && (lastclname !== item.fClassName)) {
-                  _menu.add('endsub:');
+                  _menu.endsub();
                   lastclname = '';
                }
                if (lastclname !== item.fClassName) {
@@ -1370,7 +1404,7 @@ class ObjectPainter extends BasePainter {
                   const p = lastclname.lastIndexOf('::'),
                         shortname = (p > 0) ? lastclname.slice(p+2) : lastclname;
 
-                  _menu.add('sub:' + shortname.replace(/[<>]/g, '_'));
+                  _menu.sub(shortname.replace(/[<>]/g, '_'));
                }
 
                if ((item.fChecked === undefined) || (item.fChecked < 0))
@@ -1379,7 +1413,7 @@ class ObjectPainter extends BasePainter {
                   _menu.addchk(item.fChecked, item.fName, n, DoExecMenu);
             }
 
-            if (lastclname) _menu.add('endsub:');
+            if (lastclname) _menu.endsub();
          }
 
          _resolveFunc(_menu);

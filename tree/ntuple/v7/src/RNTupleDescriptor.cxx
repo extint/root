@@ -65,7 +65,9 @@ std::unique_ptr<ROOT::Experimental::RFieldBase>
 ROOT::Experimental::RFieldDescriptor::CreateField(const RNTupleDescriptor &ntplDesc) const
 {
    if (GetStructure() == ENTupleStructure::kUnsplit) {
-      return std::make_unique<RUnsplitField>(GetFieldName(), GetTypeName());
+      auto unsplitField = std::make_unique<RUnsplitField>(GetFieldName(), GetTypeName());
+      unsplitField->SetOnDiskId(fFieldId);
+      return unsplitField;
    }
 
    if (GetTypeName().empty()) {
@@ -610,10 +612,10 @@ ROOT::Experimental::Internal::RClusterDescriptorBuilder::AddExtendedColumnRanges
 
                   pageRange.fPhysicalColumnId = physicalId;
                }
-               // Fixup the RColumnRange and RPageRange in deferred columns.  We know what the first element index and
+               // Fixup the RColumnRange and RPageRange in deferred columns. We know what the first element index and
                // number of elements should have been if the column was not deferred; fix those and let
                // `ExtendToFitColumnRange()` synthesize RPageInfos accordingly.
-               // Note that a column whose first element index is != 0 already met the criteria of
+               // Note that a deferred column (i.e, whose first element index is > 0) already met the criteria of
                // `RFieldBase::EntryToColumnElementIndex()`, i.e. it is a principal column reachable from the field zero
                // excluding subfields of collection and variant fields.
                if (c.IsDeferredColumn()) {
@@ -765,6 +767,7 @@ ROOT::Experimental::Internal::RFieldDescriptorBuilder::RFieldDescriptorBuilder(c
 {
    fField.fParentId = kInvalidDescriptorId;
    fField.fLinkIds = {};
+   fField.fLogicalColumnIds = {};
 }
 
 ROOT::Experimental::Internal::RFieldDescriptorBuilder
@@ -834,32 +837,6 @@ ROOT::Experimental::Internal::RNTupleDescriptorBuilder::AddFieldLink(DescriptorI
    }
    fDescriptor.fFieldDescriptors.at(linkId).fParentId = fieldId;
    fDescriptor.fFieldDescriptors.at(fieldId).fLinkIds.push_back(linkId);
-   return RResult<void>::Success();
-}
-
-ROOT::Experimental::RResult<void>
-ROOT::Experimental::Internal::RNTupleDescriptorBuilder::AddColumn(DescriptorId_t logicalId, DescriptorId_t physicalId,
-                                                                  DescriptorId_t fieldId, const RColumnModel &model,
-                                                                  std::uint32_t index, std::uint64_t firstElementIdx)
-{
-   RColumnDescriptor c;
-   c.fLogicalColumnId = logicalId;
-   c.fPhysicalColumnId = physicalId;
-   c.fFieldId = fieldId;
-   c.fModel = model;
-   c.fIndex = index;
-   c.fFirstElementIndex = firstElementIdx;
-
-   auto res = AttachColumn(fieldId, c);
-   if (!res)
-      R__FORWARD_ERROR(res);
-
-   if (!c.IsAliasColumn())
-      fDescriptor.fNPhysicalColumns++;
-   if (fDescriptor.fHeaderExtension)
-      fDescriptor.fHeaderExtension->AddColumn(/*isAliasColumn=*/c.IsAliasColumn());
-   fDescriptor.fColumnDescriptors.emplace(logicalId, std::move(c));
-
    return RResult<void>::Success();
 }
 
