@@ -30,6 +30,9 @@
 #include "Div_FromONNX.hxx"
 #include "input_models/references/Div.ref.hxx"
 
+#include "DivParametricBroadcast_FromONNX.hxx"
+#include "input_models/references/DivParametricBroadcast.ref.hxx"
+
 #include "Cast_FromONNX.hxx"
 #include "input_models/references/Cast.ref.hxx"
 
@@ -463,7 +466,7 @@ TEST(ONNX, MulDynamic)
       size_t dim1 = 4;
       size_t batch_size2 = 1;
       size_t dim2 = 4;
-      TMVA_SOFIE_MulDynamic::Session s("MulDynamic_FromONNX.dat", batch_size1, dim2, dim1, batch_size2);
+      TMVA_SOFIE_MulDynamic::Session s("MulDynamic_FromONNX.dat",0,0, batch_size1, dim2, dim1, batch_size2);
 
       std::vector<float> output = s.infer(batch_size1, dim1, input1.data(), batch_size2, dim2 , input2.data());
 
@@ -474,7 +477,6 @@ TEST(ONNX, MulDynamic)
 
       // Checking every output value, one by one
       for (size_t i = 0; i < output.size(); ++i) {
-         std::cout<<"expected: "<<correct[i]<<"got: "<<output[i]<<std::endl;
          EXPECT_LE(std::abs(output[i] - correct[i]), TOLERANCE);
       }
    }
@@ -488,8 +490,7 @@ TEST(ONNX, MulDynamic)
       std::vector<float> input2({-0.06963501125574112, -0.7043687105178833, -1.6343672275543213, -0.1326988935470581, -0.1044437512755394, -1.7754945755004883, 0.6466773152351379, -0.9006702303886414, -0.8912118673324585, 1.5253545045852661, -2.0310280323028564, 1.062422752380371});
       size_t batch_size = 3;
       size_t dim = 4;
-      // size_t batch_size2 = 3;
-      // size_t dim2 = 4;
+      
       TMVA_SOFIE_MulDynamicNoBroadCast::Session s("MulDynamicNoBroadCast_FromONNX.dat", batch_size, dim);
 
       std::vector<float> output = s.infer(batch_size, dim, input1.data(), input2.data());
@@ -524,6 +525,36 @@ TEST(ONNX, Div)
       EXPECT_EQ(output.size(), sizeof(Div_ExpectedOutput::outputs) / sizeof(float));
 
       float *correct = Div_ExpectedOutput::outputs;
+
+      // Checking every output value, one by one
+      for (size_t i = 0; i < output.size(); ++i) {
+         EXPECT_LE(std::abs(output[i] - correct[i]), TOLERANCE);
+      }
+   }
+
+   TEST(ONNX, DivParametricBroadcast)
+   {
+      constexpr float TOLERANCE = DEFAULT_TOLERANCE;
+
+      // Preparing the standard input
+      std::vector<float> input1({9999.3330078125, 10001.7626953125, 9999.29296875, 9998.5517578125, 
+                                 10000.6640625, 9999.6767578125, 9998.939453125, 10000.6337890625});
+      std::vector<float> input2({10000.3330078125, 9999.4658203125, 10000.2802734375, 9998.4755859375, 
+                                 9999.9228515625,10001.3203125, 9999.78125, 9998.34765625, 
+                                 10001.048828125, 9999.9326171875, 9999.03125, 10000.189453125});
+                                 
+      size_t bs1 = 2, bs2 = 1;
+      size_t n1 = 1, n2 = 3;
+      size_t p1 = 4, p2 = 4;
+
+      TMVA_SOFIE_DivParametricBroadcast::Session s("DivParametricBroadcast_FromONNX.dat",p1,n1,bs1,p2,0,0,n2,0,bs2);
+
+      std::vector<float> output = s.infer(bs1,n1,p1,input1.data(),bs2,n2,p2,input2.data());
+
+      // Checking output size
+      EXPECT_EQ(output.size(), sizeof(DivParametricBroadcast_ExpectedOutput::outputs) / sizeof(float));
+
+      float *correct = DivParametricBroadcast_ExpectedOutput::outputs;
 
       // Checking every output value, one by one
       for (size_t i = 0; i < output.size(); ++i) {
