@@ -136,21 +136,7 @@ public:
          auto shapeB_int = model.GetTensorShape(fNB);
          fShapeB = ConvertShapeToDim(shapeB_int);
       }
-      std::string dyn="nothing A\n";
-      if(model.IsDynamicTensor(fNA))
-       dyn= "dynamicT A\n";
-      if(model.IsInputTensor(fNA))
-       dyn= "inputT A\n";
-      std::cout<<dyn;
       broadcast = !UTILITY::AreSameShape(fShapeA, fShapeB);
-      {
-         std::cout<<"A: ";
-         for(auto i:fShapeA)std::cout<<i.GetVal()<<" ";
-         std::cout<<"\nB: ";
-         for(auto i:fShapeB)std::cout<<i.GetVal()<<" ";
-         std::cout<<std::endl;      
-         std::cout<<broadcast<<" broad\n";
-      }
 
       if (broadcast) {
          if(!fIsDynamic){
@@ -161,9 +147,6 @@ public:
             // fShapeY = UTILITY::UnidirectionalBroadcastShape(ShapeA_int, ShapeB_int);
             ShapeY_int = UTILITY::UnidirectionalBroadcastShape(ShapeA_int, ShapeB_int);
             fShapeY = ConvertShapeToDim(ShapeY_int);
-            std::cout<<"output\n";
-            for(auto i:fShapeY)std::cout<<i.GetVal()<<" ";
-               std::cout<<std::endl;
             bool broadcastA = !UTILITY::AreSameShape(ShapeA_int, ShapeY_int);
             bool broadcastB = !UTILITY::AreSameShape(ShapeB_int, ShapeY_int);
             // Broadcast A to Y
@@ -203,33 +186,33 @@ public:
             model.AddIntermediateTensor(fNY, model.GetTensorType(fNA), fShapeY);
          }
          else {
-            // std::vector<Dim> bcastedShapeY=fShapeA; //need to figure out -> this is just a temporary shape, it will be updated after broadcasting in the init code
-                                                    // at runtime
             // Add an intermediate tensor for broadcasting B
             fNBroadcadstedA = "Broadcasted" + fNA;
             model.AddIntermediateTensor(fNBroadcadstedA, model.GetTensorType(fNA), fShapeA);
             // Add an intermediate tensor for broadcasting B
             fNBroadcadstedB = "Broadcasted" + fNB;
             model.AddIntermediateTensor(fNBroadcadstedB, model.GetTensorType(fNB), fShapeB);
-            // auto shapeA = ConvertDynamicShapeToString(fShapeA);
-            // auto shapeB = ConvertDynamicShapeToString(fShapeB);
-            // std::string nameA = fNA+"_shape";
-            // std::string nameB = fNB+"_shape";
-            // model.AddIntermediateTensor(nameA, model.GetTensorType(fNA), fShapeA);
-            // model.AddIntermediateTensor(nameB, model.GetTensorType(fNB), fShapeB);
-            fShapeY = fShapeA;                                        
-            model.AddDynamicTensor(fNY, model.GetTensorType(fNA),fShapeY);
+
+            if(model.IsInputTensor(fNA)||model.IsInputTensor(fNB)){
+               for(size_t i=0;i<fShapeA.size();i++){
+                  std::string outputParam = "output_dim"+std::to_string(i);
+                  Dim temp (outputParam);
+                  fShapeY.push_back(temp);
+               }
+               model.AddIntermediateTensor(fNY, model.GetTensorType(fNA), fShapeY);
+            }
+            else{
+               fShapeY = model.GetDynamicTensorShape(fNY);
+               model.AddIntermediateTensor(fNY, model.GetTensorType(fNA), fShapeY);
+            } 
+            // fShapeY = fShapeA;                                        
+            // model.AddDynamicTensor(fNY, model.GetTensorType(fNA),fShapeY);
          }
       } else {
          fShapeY = fShapeA;
          model.AddIntermediateTensor(fNY, model.GetTensorType(fNA), fShapeY);
       }
    }
-
-   // std::string GenerateInitCode() override {
-   //    std::stringstream out;
-   //    return out.str();
-   // }
 
    std::string GenerateInitCode() {
       std::stringstream out;
@@ -245,7 +228,7 @@ public:
          out << SP << "for(auto i:OutputShape)\n";
          out << SP << SP << "OutputLength*=i;\n";   
          out << SP << "fTensor_" + fNY + ".resize(OutputLength);\n";
-
+         out << SP <<"tensor_" << fNY << " = fTensor_" << fNY << ".data();\n";
 
          out << SP << "bool broadcastA = !TMVA::Experimental::SOFIE::UTILITY::AreSameShape(fShapeA, OutputShape);\n";
          out << SP << "bool broadcastB = !TMVA::Experimental::SOFIE::UTILITY::AreSameShape(fShapeB, OutputShape);\n";
@@ -271,7 +254,6 @@ public:
       }
       std::stringstream out;
       out << SP << "\n//------ " << BinaryOperatorTrait<T,Op>::Name() << "\n";
-      // out<<"std::size_t length = TMVA::Experimental::SOFIE::UTILITY::ConvertShapeToLength("+ConvertDynamicShapeToString(fShapeY)+");\n";
       if(fIsDynamic && broadcast)
       {
          out << SP << "std::size_t OutputLength = fTensor_" + fNY + ".size();\n";
@@ -280,6 +262,11 @@ public:
          out << SP << "std::vector<size_t> fShapeA = " << shapeA << ";\n";
          out << SP << "std::vector<size_t> fShapeB = " << shapeB << ";\n";
          out << SP << "std::vector<size_t> OutputShape = TMVA::Experimental::SOFIE::UTILITY::UnidirectionalBroadcastShape(fShapeA, fShapeB);\n";
+         for(size_t i=0;i<fShapeY.size();i++){
+            out << SP << "size_t "<< fShapeY[i].param << " = OutputShape["<<i<<"];\n"; 
+            // out << SP << "std::cout<<" << fShapeY[i].param<<"<<std::endl;\n";
+         }
+         // out << SP << "std::cout<<fTensor_" + fNY + ".size();\n";
       }
       else {
          out << SP << "std::size_t OutputLength = "<<ConvertDynamicShapeToLength(fShapeY)<<";\n";
