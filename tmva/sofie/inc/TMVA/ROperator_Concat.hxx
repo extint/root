@@ -23,7 +23,9 @@
          int fnewAxis=0;
          std::vector<std::string> fInputs;
          std::string fOutput;
+         std::string fOutputAxisParam;
          std::vector<Dim>fOutputShape;
+         bool isParam = false;
          std::vector<std::vector<Dim>> fInputShapes;
 
      public:
@@ -104,29 +106,38 @@
 
             int concat_dim=0;
             if(fnewAxis == 0){
+               // contains the parametric form of concat_dim eg: N + 3 + n_pf 
+               std::string param_concat_dim = ""; 
                for (size_t i = 0; i < inputs.size(); i++) {
                   if (i > 0 && inputs[i].size() != inputs[i - 1].size())
                      throw std::runtime_error("TMVA SOFIE Concat Op - input tensors have different shapes " +
                                               ConvertDynamicShapeToString(inputs[i]) + " and " + ConvertDynamicShapeToString(inputs[i - 1]));
                   for (size_t iaxis = 0; iaxis < inputs[i].size(); iaxis++) {
                      if ((int)iaxis == fAxis) {
-                        // support only non-params shape for the concatenation axis
-                        if (inputs[i][iaxis].isParam)
-                           throw std::runtime_error("TMVA SOFIE Concat Op - not supporting input param dimensions for concatenation axis. Input shape is " +
-                                                     ConvertDynamicShapeToString(inputs[i]));
-                        concat_dim += inputs[i][iaxis].dim;
+                        if (isParam)
+                           param_concat_dim += (i>0?" + ":"") + inputs[i][iaxis].GetVal();
+                        else
+                           concat_dim += inputs[i][iaxis].dim;
                      }
-                     // other dimensions must be the same
-                     else if (i > 0 && inputs[i][iaxis].GetVal() != inputs[i - 1][iaxis].GetVal())
+                     // other dimensions must be the same or parametric (if any of the 2 dims is parametric, and not fAxis, we assume it would be equal)
+                     else if (i > 0 && !inputs[i][iaxis].isParam &&!inputs[i-1][iaxis].isParam && inputs[i][iaxis].GetVal() != inputs[i - 1][iaxis].GetVal()){
                         throw std::runtime_error("TMVA SOFIE Concat Op - input tensors have wrong shapes " +
                                                  ConvertDynamicShapeToString(inputs[i]) + " and " +
                                                  ConvertDynamicShapeToString(inputs[i - 1]));
+                     }
                   }
                }
 
                // output shape
                ret[0] = inputs[0];
-               ret[0][fAxis].dim = concat_dim;
+               if(isParam){
+                  fOutputAxisParam = param_concat_dim;
+                  ret[0][fAxis].param = "outputAxis"; 
+                  ret[0][fAxis].dim = 1;
+                  ret[0][fAxis].isParam=true;
+               }
+               else
+                  ret[0][fAxis].dim = concat_dim;
             }
             // case of stacking (not supported yet)
             // here we need to check that input shapes are the same
@@ -144,10 +155,23 @@
                if (model.CheckIfTensorAlreadyExist(it) == false) {
                   throw std::runtime_error("TMVA SOFIE Concat Op Input Tensor " + it + " is not found in model");
                }
+               if(model.IsDynamicTensor(it)||model.IsInputTensor(it)) {
+                  isParam = true;
+               }
                fInputShapes.push_back(model.GetDynamicTensorShape(it));
             }
             fOutputShape = ShapeInference(fInputShapes)[0];
             model.AddIntermediateTensor(fOutput, model.GetTensorType(fInputs[0]), fOutputShape);
+         }
+
+         std::string GenerateInitCode() {
+            std::stringstream out;
+            if(isParam){
+               out << SP << "outputAxis = " << fOutputAxisParam << ";\n";
+               out << SP << "fTensor_" + fOutput << ".resize("+ConvertDynamicShapeToLength(fOutputShape)+");\n";  
+               out << SP << "tensor_" + fOutput << " = fTensor_" + fOutput <<".data();\n";  
+            }
+            return out.str();
          }
 
          std::string Generate(std::string OpName){
@@ -157,6 +181,8 @@
             }
             std::stringstream out;
             out<<"\n//--------- Concat\n";
+            if(isParam)
+               out << SP << "size_t outputAxis = " << fOutputAxisParam << ";\n";
             // special case when memory is contiguous
             bool hasShapeOnes = true;
             for(int i = 0; i<fAxis; ++i){
@@ -176,43 +202,48 @@
                }
             }
             else {
-
-               std::vector<Dim> outStride = UTILITY::ComputeStrideFromShape(fOutputShape);
-               std::vector<std::vector<Dim>> inStrides(fInputs.size());
-               int idx = 0;
-               for ( auto &s : inStrides) {
-                  s = UTILITY::ComputeStrideFromShape(fInputShapes[idx]);
-                  idx++;
+               // bound for the outer for loop 
+               // example shape:[m,n,fAxis,p] -> outerDim = m*n
+               Dim outerDim;
+               if(isParam){
+                  outerDim.isParam = true;
+                  for(int i = 0; i<fAxis; i++) {
+                     outerDim.param += (i == 0 ? "" : "*") + fOutputShape[i].GetVal();
+                  }
                }
-               for (int i = 0; i < fAxis; ++i) {
-                  // loop on dimensions
-                  out << SP << "for (size_t i" << i << " = 0; i" << i << " < " << fOutputShape[i].GetVal() << "; ++i" << i <<") {\n";
+               else{
+                  outerDim.dim = 1;
+                  outerDim.isParam = false;
+                  for(int i = 0;i<fAxis;i++) {
+                     outerDim.dim *= fOutputShape[0].dim;
+                  }
                }
-
-               out << SP << SP << SP << "int idxOut = ";
-               for (int k = 0; k < fAxis; k++) {
-                  if (k > 0) out << " + ";
-                  out << outStride[k].GetVal() << "*i" << k;
-               }
-               out << ";\n";
+               out << SP << "int idxOut = 0;\n";
+               out << SP << "for (size_t i = 0; i < " << outerDim.GetVal() << "; ++i ) {\n";
 
                for (size_t j = 0; j < fInputs.size(); j++) {
-                  if (j>0)
-                  out << SP << SP << SP << "idxOut += " << fInputShapes[j-1][fAxis].GetVal() << ";\n";
-                  out << SP << SP << SP << "int idxIn" << j <<" = ";
-                  for (int k = 0; k < fAxis; k++) {
-                     if (k > 0) out << " + ";
-                     out << inStrides[j][k].GetVal() << "*i" << k;
+                  // bound for inner for loop (calclulated for each input)
+                  // shape: [m,n,fAxis,p] -> innerDim = fAxis*p
+                  Dim innerDim;
+                  if(isParam){
+                     innerDim.isParam = true;
+                     for(int in = fAxis; in<(int)fInputShapes[j].size(); in++) {
+                        innerDim.param += (in == fAxis ? "" : "*") + fInputShapes[j][in].GetVal();
+                     }
                   }
-                  out << ";\n";
-                  out << SP << SP << SP << "for (size_t iC = 0; iC < " << fInputShapes[j][fAxis].GetVal() << "; ++iC) {\n";
-                  out << SP << SP << SP << SP << "tensor_" << fOutput << "[idxOut+iC] = tensor_" << fInputs[j] << "[idxIn" << j << "+iC];\n";
-                  out << SP << SP << SP << "}\n";
-               // concatenate the axis values
+                  else{
+                     innerDim.dim = 1;
+                     innerDim.isParam = false;
+                     for(int in = fAxis; in<(int)fInputShapes[j].size(); in++) {
+                        innerDim.dim *= fInputShapes[j][in].dim;
+                     }
+                  }
+                  out << SP << SP << "int idxIn" << j <<" = i*" << innerDim.GetVal() << ";\n";
+                  out << SP << SP << "for (size_t iC = 0; iC < " << innerDim.GetVal() << "; ++iC) {\n";
+                  out << SP << SP << SP << "tensor_" << fOutput << "[idxOut++] = tensor_" << fInputs[j] << "[idxIn" << j << "+iC];\n";
+                  out << SP << SP << "}\n";
                }
-                for (int i = 0; i < fAxis; ++i) {
-                    out << SP << "}\n";
-                }
+               out << SP << "}\n";
             }
 
             return out.str();
