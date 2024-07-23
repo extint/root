@@ -454,7 +454,7 @@ TEST(ONNX, MulDynamic)
       size_t dim1 = 4;
       size_t batch_size2 = 1;
       size_t dim2 = 4;
-      TMVA_SOFIE_MulDynamic::Session s("MulDynamic_FromONNX.dat",0,0, batch_size1, dim2, dim1, batch_size2);
+      TMVA_SOFIE_MulDynamic::Session s("MulDynamic_FromONNX.dat", batch_size1, dim2, dim1, batch_size2);
 
       std::vector<float> output = s.infer(batch_size1, dim1, input1.data(), batch_size2, dim2 , input2.data());
 
@@ -535,7 +535,7 @@ TEST(ONNX, DivParametricBroadcast)
    size_t n1 = 1, n2 = 3;
    size_t p1 = 4, p2 = 4;
 
-   TMVA_SOFIE_DivParametricBroadcast::Session s("DivParametricBroadcast_FromONNX.dat",p1,n1,bs1,p2,0,0,n2,0,bs2);
+   TMVA_SOFIE_DivParametricBroadcast::Session s("DivParametricBroadcast_FromONNX.dat",p1,n1,bs1,p2,n2,bs2);
 
    std::vector<float> output = s.infer(bs1,n1,p1,input1.data(),bs2,n2,p2,input2.data());
 
