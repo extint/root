@@ -28,7 +28,11 @@ ParserFuncSignature ParseConstant = [](RModelParser_ONNX &parser, const onnx::No
    std::string output_name = nodeproto.output(0);
    ETensorType output_type = ETensorType::FLOAT;
    std::vector<std::size_t> shape;   // output shape (use in case of constant operator)
+<<<<<<< HEAD
    // it should be ony one attribute (Constant or 1 or 0 COnstant of Shape)
+=======
+   // it should be only one attribute (Constant or 1 or 0 COnstant of Shape)
+>>>>>>> BinaryUnaryOp_Param
    if (nodeproto.attribute_size() > 1)
       throw std::runtime_error("TMVA::SOFIE ONNX Parser Constant or ConstantOfShape and attribute size is larger than 1");
    if (nodeproto.attribute_size() > 0) {
@@ -37,7 +41,10 @@ ParserFuncSignature ParseConstant = [](RModelParser_ONNX &parser, const onnx::No
       if (attribute_name == "value") {
          const onnx::TensorProto & t = nodeproto.attribute(0).t();
          output_type = static_cast<ETensorType>(t.data_type());
+<<<<<<< HEAD
          //std::cout << "found attribute value with type " << ConvertTypeToString(output_type) << "\n";
+=======
+>>>>>>> BinaryUnaryOp_Param
 
          std::size_t length = 1;
          for (int j = 0; j < t.dims_size(); j++) {
@@ -62,7 +69,10 @@ ParserFuncSignature ParseConstant = [](RModelParser_ONNX &parser, const onnx::No
             std::vector<float> values(length);
             auto raw_data_ptr = reinterpret_cast<float *>(const_cast<char *>(t.raw_data().c_str()));
             std::memcpy(values.data(), raw_data_ptr, length * sizeof(float));
+<<<<<<< HEAD
             //for (size_t j = 0; j < values.size(); j++) std::cout << values[j] << "\n";
+=======
+>>>>>>> BinaryUnaryOp_Param
             op.reset(new ROperator_Constant<float>("float",values, shape, input_name, output_name));
             break;
          }
@@ -81,7 +91,11 @@ ParserFuncSignature ParseConstant = [](RModelParser_ONNX &parser, const onnx::No
                shape.push_back(1);
                op.reset(new ROperator_Constant<float>("float",values, shape, input_name, output_name));
             }
+<<<<<<< HEAD
             if (attribute_name == "value_floats") {
+=======
+            else if (attribute_name == "value_floats") {
+>>>>>>> BinaryUnaryOp_Param
                auto values = std::vector<float>({nodeproto.attribute(0).floats().begin(), nodeproto.attribute(0).floats().end()});
                shape.push_back(values.size());
                op.reset(new ROperator_Constant<float>("float",values, shape, input_name, output_name));
@@ -109,8 +123,13 @@ ParserFuncSignature ParseConstant = [](RModelParser_ONNX &parser, const onnx::No
       // case of Constant of Shape : if attribute is not there use by default float type with zero values
       if (isConstantOfShape) {
          std::vector<float> values(1);
+<<<<<<< HEAD
          std::vector<size_t> shape(1,1);
          op.reset(new ROperator_Constant<float>("float",values,shape, input_name, output_name));
+=======
+         std::vector<size_t> constantShape(1,1);
+         op.reset(new ROperator_Constant<float>("float",values,constantShape, input_name, output_name));
+>>>>>>> BinaryUnaryOp_Param
       } else {
          throw std::runtime_error("TMVA::SOFIE ONNX Parser Constant has no attribute");
       }

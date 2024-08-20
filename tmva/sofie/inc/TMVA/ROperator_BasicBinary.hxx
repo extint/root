@@ -159,7 +159,11 @@ public:
                   // Update the data and the shape of A
                   model.UpdateInitializedTensor(fNA, model.GetTensorType(fNA), ShapeY_int, broadcastedData);
                   ShapeA_int = ShapeY_int;
+<<<<<<< HEAD
                   fShapeB = ConvertShapeToDim(ShapeB_int); //???
+=======
+                  fShapeB = ConvertShapeToDim(ShapeB_int);
+>>>>>>> BinaryUnaryOp_Param
                } else {
                   // Add an intermediate tensor for broadcasting A
                   fNBroadcadstedA = "Broadcasted" + fNA;
@@ -176,7 +180,11 @@ public:
                   // Update the data and the shape of B
                   model.UpdateInitializedTensor(fNB, model.GetTensorType(fNB), ShapeY_int, broadcastedData);
                   ShapeB_int = ShapeY_int;
+<<<<<<< HEAD
                   fShapeB = ConvertShapeToDim(ShapeB_int); // ???
+=======
+                  fShapeB = ConvertShapeToDim(ShapeB_int);
+>>>>>>> BinaryUnaryOp_Param
                } else {
                   // Add an intermediate tensor for broadcasting B
                   fNBroadcadstedB = "Broadcasted" + fNB;
@@ -185,7 +193,11 @@ public:
             }
             model.AddIntermediateTensor(fNY, model.GetTensorType(fNA), fShapeY);
          }
+<<<<<<< HEAD
          else {
+=======
+         else {// case of parametric tensors that require broadcasting
+>>>>>>> BinaryUnaryOp_Param
             // Add an intermediate tensor for broadcasting B
             fNBroadcadstedA = "Broadcasted" + fNA;
             model.AddIntermediateTensor(fNBroadcadstedA, model.GetTensorType(fNA), fShapeA);
@@ -193,7 +205,12 @@ public:
             fNBroadcadstedB = "Broadcasted" + fNB;
             model.AddIntermediateTensor(fNBroadcadstedB, model.GetTensorType(fNB), fShapeB);
 
+<<<<<<< HEAD
             if(model.IsInputTensor(fNA)||model.IsInputTensor(fNB)){
+=======
+            // initialize fShapeY with a dummy shape since the actual shape isn't known until runtime
+            if(model.IsInputTensor(fNA)||model.IsInputTensor(fNB)){ // parametric shapes
+>>>>>>> BinaryUnaryOp_Param
                for(size_t i=0;i<fShapeA.size();i++){
                   std::string outputParam = "output_dim"+std::to_string(i);
                   Dim temp (outputParam);
@@ -205,8 +222,11 @@ public:
                fShapeY = model.GetDynamicTensorShape(fNY);
                model.AddIntermediateTensor(fNY, model.GetTensorType(fNA), fShapeY);
             } 
+<<<<<<< HEAD
             // fShapeY = fShapeA;                                        
             // model.AddDynamicTensor(fNY, model.GetTensorType(fNA),fShapeY);
+=======
+>>>>>>> BinaryUnaryOp_Param
          }
       } else {
          fShapeY = fShapeA;
@@ -219,6 +239,7 @@ public:
       // generate initialization code for broadcasting of output tensor
       if (fIsDynamic && broadcast) {
          // parametric dynamic tensors
+<<<<<<< HEAD
          auto shapeA = ConvertDynamicShapeToString(fShapeA);
          auto shapeB = ConvertDynamicShapeToString(fShapeB);
          out << SP << "std::vector<size_t> fShapeA = " << shapeA << ";\n";
@@ -227,12 +248,25 @@ public:
          out << SP << "std::size_t OutputLength=1;\n";
          out << SP << "for(auto i:OutputShape)\n";
          out << SP << SP << "OutputLength*=i;\n";   
+=======
+         const std::string shapeA = ConvertDynamicShapeToString(fShapeA);
+         const std::string shapeB = ConvertDynamicShapeToString(fShapeB);
+         out << SP << "std::vector<size_t> fShapeA = " << shapeA << ";\n";
+         out << SP << "std::vector<size_t> fShapeB = " << shapeB << ";\n";
+         out << SP << "std::vector<size_t> OutputShape = TMVA::Experimental::SOFIE::UTILITY::UnidirectionalBroadcastShape(fShapeA, fShapeB);\n";
+         out << SP << "std::size_t OutputLength = std::accumulate(OutputShape.begin(), OutputShape.end(), 1, std::multiplies<size_t>());\n";
+
+         // resize the output tensor at runtime   
+>>>>>>> BinaryUnaryOp_Param
          out << SP << "fTensor_" + fNY + ".resize(OutputLength);\n";
          out << SP <<"tensor_" << fNY << " = fTensor_" << fNY << ".data();\n";
 
          out << SP << "bool broadcastA = !TMVA::Experimental::SOFIE::UTILITY::AreSameShape(fShapeA, OutputShape);\n";
          out << SP << "bool broadcastB = !TMVA::Experimental::SOFIE::UTILITY::AreSameShape(fShapeB, OutputShape);\n";
+<<<<<<< HEAD
 
+=======
+>>>>>>> BinaryUnaryOp_Param
          out << SP << "if (broadcastA) {\n";
          out << SP << SP << "// resize intermediate tensor for broadcasting A\n";
          out << SP << SP << "fTensor_Broadcasted" + fNA + ".resize(OutputLength);\n";
@@ -262,11 +296,20 @@ public:
          out << SP << "std::vector<size_t> fShapeA = " << shapeA << ";\n";
          out << SP << "std::vector<size_t> fShapeB = " << shapeB << ";\n";
          out << SP << "std::vector<size_t> OutputShape = TMVA::Experimental::SOFIE::UTILITY::UnidirectionalBroadcastShape(fShapeA, fShapeB);\n";
+<<<<<<< HEAD
          for(size_t i=0;i<fShapeY.size();i++){
             out << SP << "size_t "<< fShapeY[i].param << " = OutputShape["<<i<<"];\n"; 
             // out << SP << "std::cout<<" << fShapeY[i].param<<"<<std::endl;\n";
          }
          // out << SP << "std::cout<<fTensor_" + fNY + ".size();\n";
+=======
+         // intitializing the dimensions of the output tesnor with the new values 
+         // this is a temporary fix, to be improved later
+         out << "// Initializing output dimensions for ret\n";
+         for(size_t i = 0; i<fShapeY.size(); i++) {
+            out << SP << "size_t "<< fShapeY[i].param << " = OutputShape["<<i<<"];\n"; 
+         }
+>>>>>>> BinaryUnaryOp_Param
       }
       else {
          out << SP << "std::size_t OutputLength = "<<ConvertDynamicShapeToLength(fShapeY)<<";\n";
@@ -277,7 +320,11 @@ public:
          out << SP << "// Broadcasting uninitialized tensor " << fNA << "\n";
          out << SP << "{\n";
          if(fIsDynamic && broadcast)
+<<<<<<< HEAD
             out << SP << SP << typeName << "* data = TMVA::Experimental::SOFIE::UTILITY::UnidirectionalBroadcast<" << typeName << ">(tensor_" << fNA << ", " << ConvertDynamicShapeToString(fShapeA) << ", OutputShape );\n";
+=======
+            out << SP << SP << typeName << "* data = TMVA::Experimental::SOFIE::UTILITY::UnidirectionalBroadcast<" << typeName << ">(tensor_" << fNA << ", fShapeA, OutputShape );\n";
+>>>>>>> BinaryUnaryOp_Param
          else
             out << SP << SP << typeName << "* data = TMVA::Experimental::SOFIE::UTILITY::UnidirectionalBroadcast<" << typeName << ">(tensor_" << fNA << ", " << ConvertDynamicShapeToString(fShapeA) << ","<<ConvertDynamicShapeToString(fShapeY)<<" );\n";
          out << SP << SP << "std::copy(data, data + OutputLength, tensor_" << fNBroadcadstedA << ");\n";
@@ -289,9 +336,15 @@ public:
          out << SP << "// Broadcasting uninitialized tensor " << fNB << "\n";
          out << SP << "{\n";
          if(fIsDynamic && broadcast)
+<<<<<<< HEAD
             out << SP << SP << typeName << "* data = TMVA::Experimental::SOFIE::UTILITY::UnidirectionalBroadcast<" << typeName << ">(tensor_" << fNB << ", " << ConvertDynamicShapeToString(fShapeB) << ",OutputShape );\n";
          else
             out << SP << SP << typeName << "* data = TMVA::Experimental::SOFIE::UTILITY::UnidirectionalBroadcast<" << typeName << ">(tensor_" << fNB << ", " << ConvertDynamicShapeToString(fShapeB) << ","<<ConvertDynamicShapeToString(fShapeY)<<" );\n";
+=======
+            out << SP << SP << typeName << "* data = TMVA::Experimental::SOFIE::UTILITY::UnidirectionalBroadcast<" << typeName << ">(tensor_" << fNB << ", fShapeB, OutputShape );\n";
+         else
+            out << SP << SP << typeName << "* data = TMVA::Experimental::SOFIE::UTILITY::UnidirectionalBroadcast<" << typeName << ">(tensor_" << fNB << ", " << ConvertDynamicShapeToString(fShapeB) << ","<<ConvertDynamicShapeToString(fShapeY) << " );\n";
+>>>>>>> BinaryUnaryOp_Param
          out << SP << SP << "std::copy(data, data + OutputLength, tensor_" << fNBroadcadstedB << ");\n";
          out << SP << SP << "delete[] data;\n";
          out << SP << "}\n";
@@ -299,7 +352,11 @@ public:
       const std::string& nameA = fNBroadcadstedA.empty()? fNA : fNBroadcadstedA;
       const std::string& nameB = fNBroadcadstedB.empty()? fNB : fNBroadcadstedB;
       out << SP << "for (size_t id = 0; id < OutputLength ; id++){\n";
+<<<<<<< HEAD
       out << SP << SP << "tensor_" << fNY << "[id] = "  << BinaryOperatorTrait<T,Op>::Op( "tensor_" + nameA + "[id]" , "tensor_" + nameB + "[id]") <<  " ;\n";
+=======
+      out << SP << SP << "tensor_" << fNY << "[id] = "  << BinaryOperatorTrait<T,Op>::Op( "tensor_" + nameA + "[id]" , "tensor_" + nameB + "[id]") <<  ";\n";
+>>>>>>> BinaryUnaryOp_Param
       out << SP << "}\n";
       return out.str();
    }

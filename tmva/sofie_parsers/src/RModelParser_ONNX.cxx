@@ -117,6 +117,7 @@ RModelParser_ONNX::RModelParser_ONNX() noexcept : fOperatorsMapImpl(std::make_un
    // Reduce operators
    RegisterOperator("ReduceMean", ParseReduceMean);
    RegisterOperator("ReduceSum", ParseReduceSum);
+   RegisterOperator("ReduceSum", ParseReduceSum);
    RegisterOperator("ReduceSumsquare", ParseReduceSumsquare);
    RegisterOperator("ReduceProd", ParseReduceProd);
    // Others

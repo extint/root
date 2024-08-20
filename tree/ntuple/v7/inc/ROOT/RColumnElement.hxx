@@ -16,7 +16,6 @@
 #ifndef ROOT7_RColumnElement
 #define ROOT7_RColumnElement
 
-#include <ROOT/RColumnModel.hxx>
 #include <ROOT/RConfig.hxx>
 #include <ROOT/RError.hxx>
 #include <ROOT/RFloat16.hxx>
@@ -274,17 +273,20 @@ protected:
    }
 
 public:
-   RColumnElementBase(const RColumnElementBase& other) = default;
-   RColumnElementBase(RColumnElementBase&& other) = default;
-   RColumnElementBase& operator =(const RColumnElementBase& other) = delete;
-   RColumnElementBase& operator =(RColumnElementBase&& other) = default;
+   RColumnElementBase(const RColumnElementBase &other) = default;
+   RColumnElementBase(RColumnElementBase &&other) = default;
+   RColumnElementBase &operator=(const RColumnElementBase &other) = delete;
+   RColumnElementBase &operator=(RColumnElementBase &&other) = default;
    virtual ~RColumnElementBase() = default;
 
    /// If CppT == void, use the default C++ type for the given column type
    template <typename CppT = void>
    static std::unique_ptr<RColumnElementBase> Generate(EColumnType type);
-   static std::size_t GetBitsOnStorage(EColumnType type);
    static std::string GetTypeName(EColumnType type);
+   /// Most types have a fixed on-disk bit width. Some low-precision column types
+   /// have a range of possible bit widths. Return the minimum and maximum allowed
+   /// bit size per type.
+   static std::pair<std::uint16_t, std::uint16_t> GetValidBitRange(EColumnType type);
 
    /// Derived, typed classes tell whether the on-storage layout is bitwise identical to the memory layout
    virtual bool IsMappable() const
@@ -644,6 +646,39 @@ public:
          std::uint16_t val = uint16Array[i];
          ByteSwapIfNecessary(val);
          floatArray[i] = HalfToFloat(val);
+      }
+   }
+};
+
+template <>
+class RColumnElement<double, EColumnType::kReal16> : public RColumnElementBase {
+public:
+   static constexpr bool kIsMappable = false;
+   static constexpr std::size_t kSize = sizeof(double);
+   static constexpr std::size_t kBitsOnStorage = 16;
+   RColumnElement() : RColumnElementBase(kSize, kBitsOnStorage) {}
+   bool IsMappable() const final { return kIsMappable; }
+
+   void Pack(void *dst, void *src, std::size_t count) const final
+   {
+      double *doubleArray = reinterpret_cast<double *>(src);
+      std::uint16_t *uint16Array = reinterpret_cast<std::uint16_t *>(dst);
+
+      for (std::size_t i = 0; i < count; ++i) {
+         uint16Array[i] = FloatToHalf(static_cast<float>(doubleArray[i]));
+         ByteSwapIfNecessary(uint16Array[i]);
+      }
+   }
+
+   void Unpack(void *dst, void *src, std::size_t count) const final
+   {
+      double *doubleArray = reinterpret_cast<double *>(dst);
+      std::uint16_t *uint16Array = reinterpret_cast<std::uint16_t *>(src);
+
+      for (std::size_t i = 0; i < count; ++i) {
+         std::uint16_t val = uint16Array[i];
+         ByteSwapIfNecessary(val);
+         doubleArray[i] = static_cast<double>(HalfToFloat(val));
       }
    }
 };

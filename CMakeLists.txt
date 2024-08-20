@@ -289,6 +289,7 @@ if(asan)
   endforeach()
   #add_link_options() not available in our CMake version:
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${ASAN_EXTRA_SHARED_LINKER_FLAGS}")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${ASAN_EXTRA_EXE_LINKER_FLAGS}")
 endif()
 
 #---Enable CTest package -----------------------------------------------------------------------
@@ -782,12 +783,29 @@ Build type:        ${CMAKE_BUILD_TYPE}
 Install path:      ${CMAKE_INSTALL_PREFIX}
 Compiler:          ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}
 C++ standard:      ${CMAKE_CXX_STANDARD}
-Compiler flags:
+Compiler flags:")
+if(MSVC)
+message(STATUS "
  - C:                         ${CMAKE_C_FLAGS}
- - C (built type specific):   ${CMAKE_C_FLAGS_${_BUILD_TYPE_UPPER}}
+ - C (build type specific):
+     Debug:                   ${CMAKE_C_FLAGS_DEBUG}
+     Release:                 ${CMAKE_C_FLAGS_RELEASE}
+     MinSizeRel:              ${CMAKE_C_FLAGS_MINSIZEREL}
+     RelWithDebInfo:          ${CMAKE_C_FLAGS_RELWITHDEBINFO}
  - C++:                       ${CMAKE_CXX_FLAGS}
- - C++ (built type specific): ${CMAKE_CXX_FLAGS_${_BUILD_TYPE_UPPER}}
-Linker flags:
+ - C++ (build type specific):
+     Debug:                   ${CMAKE_CXX_FLAGS_DEBUG}
+     Release:                 ${CMAKE_CXX_FLAGS_RELEASE}
+     MinSizeRel:              ${CMAKE_CXX_FLAGS_MINSIZEREL}
+     RelWithDebInfo:          ${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
+else()
+message(STATUS "
+ - C:                         ${CMAKE_C_FLAGS}
+ - C (build type specific):   ${CMAKE_C_FLAGS_${_BUILD_TYPE_UPPER}}
+ - C++:                       ${CMAKE_CXX_FLAGS}
+ - C++ (build type specific): ${CMAKE_CXX_FLAGS_${_BUILD_TYPE_UPPER}}")
+endif()
+message(STATUS "Linker flags:
  - Executable:     ${CMAKE_EXE_LINKER_FLAGS}
  - Module:         ${CMAKE_MODULE_LINKER_FLAGS}
  - Shared:         ${CMAKE_SHARED_LINKER_FLAGS}\n")

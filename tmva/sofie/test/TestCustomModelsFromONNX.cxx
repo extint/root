@@ -48,6 +48,7 @@
 #include "Constant_FromONNX.hxx"
 #include "input_models/references/Constant.ref.hxx"
 
+<<<<<<< HEAD
 #include "Tile_FromONNX.hxx"
 #include "input_models/references/Tile.ref.hxx"
 
@@ -60,6 +61,8 @@
 #include "ComplexTopK_FromONNX.hxx"
 #include "input_models/references/ComplexTopK.ref.hxx"
 
+=======
+>>>>>>> BinaryUnaryOp_Param
 #include "LinearWithLeakyRelu_FromONNX.hxx"
 #include "input_models/references/LinearWithLeakyRelu.ref.hxx"
 
@@ -204,8 +207,13 @@
 #include "Sqrt_FromONNX.hxx"
 #include "input_models/references/Sqrt.ref.hxx"
 
+<<<<<<< HEAD
 #include "Sqrt_model_dynamic_FromONNX.hxx"
 #include "input_models/references/Sqrt_model_dynamic.ref.hxx"
+=======
+#include "SqrtParametric_FromONNX.hxx"
+#include "input_models/references/SqrtParametric.ref.hxx"
+>>>>>>> BinaryUnaryOp_Param
 
 #include "Reciprocal_FromONNX.hxx"
 #include "input_models/references/Reciprocal.ref.hxx"
@@ -489,6 +497,7 @@ TEST(ONNX, MulDynamic)
       }
    }
 
+<<<<<<< HEAD
    TEST(ONNX, MulDynamicNoBroadCast)
    {
       constexpr float TOLERANCE = DEFAULT_TOLERANCE;
@@ -513,6 +522,32 @@ TEST(ONNX, MulDynamic)
          EXPECT_LE(std::abs(output[i] - correct[i]), TOLERANCE);
       }
    }
+=======
+TEST(ONNX, MulDynamicNoBroadCast)
+{
+   constexpr float TOLERANCE = DEFAULT_TOLERANCE;
+
+   // Preparing the standard input
+   std::vector<float> input1({-1.2788445949554443, -0.9844770431518555, 0.38892602920532227, 0.3172966539859772, -0.16023807227611542, -0.749869167804718, -0.911014199256897, -0.46679672598838806, -0.5317427515983582, 1.3448729515075684, -0.737988293170929, -1.4736793041229248});
+   std::vector<float> input2({-0.06963501125574112, -0.7043687105178833, -1.6343672275543213, -0.1326988935470581, -0.1044437512755394, -1.7754945755004883, 0.6466773152351379, -0.9006702303886414, -0.8912118673324585, 1.5253545045852661, -2.0310280323028564, 1.062422752380371});
+   size_t batch_size = 3;
+   size_t dim = 4;
+   
+   TMVA_SOFIE_MulDynamicNoBroadCast::Session s("MulDynamicNoBroadCast_FromONNX.dat", batch_size, dim);
+
+   std::vector<float> output = s.infer(batch_size, dim, input1.data(), input2.data());
+
+   // Checking output size
+   EXPECT_EQ(output.size(), sizeof(MulDynamicNoBroadCast_ExpectedOutput::outputs) / sizeof(float));
+
+   float *correct = MulDynamicNoBroadCast_ExpectedOutput::outputs;
+
+   // Checking every output value, one by one
+   for (size_t i = 0; i < output.size(); ++i) {
+      EXPECT_LE(std::abs(output[i] - correct[i]), TOLERANCE);
+   }
+}
+>>>>>>> BinaryUnaryOp_Param
 
 TEST(ONNX, Div)
    {
@@ -540,6 +575,7 @@ TEST(ONNX, Div)
       }
    }
 
+<<<<<<< HEAD
    TEST(ONNX, DivParametricBroadcast)
    {
       constexpr float TOLERANCE = DEFAULT_TOLERANCE;
@@ -569,6 +605,37 @@ TEST(ONNX, Div)
          EXPECT_LE(std::abs(output[i] - correct[i]), TOLERANCE);
       }
    }
+=======
+TEST(ONNX, DivParametricBroadcast)
+{
+   constexpr float TOLERANCE = DEFAULT_TOLERANCE;
+
+   // Preparing the standard input
+   std::vector<float> input1({9999.3330078125, 10001.7626953125, 9999.29296875, 9998.5517578125, 
+                              10000.6640625, 9999.6767578125, 9998.939453125, 10000.6337890625});
+   std::vector<float> input2({10000.3330078125, 9999.4658203125, 10000.2802734375, 9998.4755859375, 
+                              9999.9228515625,10001.3203125, 9999.78125, 9998.34765625, 
+                              10001.048828125, 9999.9326171875, 9999.03125, 10000.189453125});
+                              
+   size_t bs1 = 2, bs2 = 1;
+   size_t n1 = 1, n2 = 3;
+   size_t p1 = 4, p2 = 4;
+
+   TMVA_SOFIE_DivParametricBroadcast::Session s("DivParametricBroadcast_FromONNX.dat",p1,n1,bs1,p2,0,0,n2,0,bs2);
+
+   std::vector<float> output = s.infer(bs1,n1,p1,input1.data(),bs2,n2,p2,input2.data());
+
+   // Checking output size
+   EXPECT_EQ(output.size(), sizeof(DivParametricBroadcast_ExpectedOutput::outputs) / sizeof(float));
+
+   float *correct = DivParametricBroadcast_ExpectedOutput::outputs;
+
+   // Checking every output value, one by one
+   for (size_t i = 0; i < output.size(); ++i) {
+      EXPECT_LE(std::abs(output[i] - correct[i]), TOLERANCE);
+   }
+}
+>>>>>>> BinaryUnaryOp_Param
 
 TEST(ONNX, Neg)
    {
@@ -622,9 +689,12 @@ TEST(ONNX, Constant)
    constexpr float TOLERANCE = DEFAULT_TOLERANCE;
 
    // Preparing the standard  input (none for Constant Op)
+<<<<<<< HEAD
    // std::vector<float> input({
    //    1,2,3,4
    // });
+=======
+>>>>>>> BinaryUnaryOp_Param
 
    TMVA_SOFIE_Constant::Session s("Constant_FromONNX.dat");
 
@@ -641,6 +711,7 @@ TEST(ONNX, Constant)
    }
 }
 
+<<<<<<< HEAD
 TEST(ONNX, Tile) {
     constexpr float TOLERANCE = DEFAULT_TOLERANCE;
 
@@ -777,6 +848,8 @@ TEST(ONNX, TopK)
       EXPECT_LE(std::abs(indexes[i] - correct_indexes[i]), TOLERANCE);
    }
 }
+=======
+>>>>>>> BinaryUnaryOp_Param
    TEST(ONNX, EyeLike)
    {
       constexpr float TOLERANCE = DEFAULT_TOLERANCE;
@@ -2250,17 +2323,29 @@ TEST(ONNX, Sqrt)
    }
 }
 
+<<<<<<< HEAD
 TEST(ONNX, Sqrt_model_dynamic)
+=======
+TEST(ONNX, SqrtParametric)
+>>>>>>> BinaryUnaryOp_Param
 {
    constexpr float TOLERANCE = DEFAULT_TOLERANCE;
 
    std::vector<float> input({0.13019081950187683, 1.887590765953064, 0.7843485474586487, 0.6313804388046265, 0.6820828914642334, 1.0122110843658447, 0.14267124235630035, 0.17384611070156097, 0.967976450920105, 0.24158623814582825, 0.752217173576355, 0.7586784958839417, 0.08820810168981552, 0.8095927238464355, 0.1906266063451767, 0.17051447927951813, 0.6679447293281555, 0.6446378231048584, 1.1540619134902954, 1.6317979097366333, 0.448335200548172, 1.5346695184707642, 0.530795693397522, 0.26218679547309875});
    size_t batch_size = 3, n = 2, m = 4;
+<<<<<<< HEAD
    TMVA_SOFIE_Sqrt_model_dynamic::Session s("Sqrt_model_dynamic_FromONNX.data", m,n,batch_size);
    std::vector<float> output = s.infer(batch_size, n, m, input.data());
 
    EXPECT_EQ(output.size(), sizeof(Sqrt_model_dynamic_ExpectedOutput::output) / sizeof(float));
    float* correct = Sqrt_model_dynamic_ExpectedOutput::output;
+=======
+   TMVA_SOFIE_SqrtParametric::Session s("SqrtParametric_FromONNX.data", m,n,batch_size);
+   std::vector<float> output = s.infer(batch_size, n, m, input.data());
+
+   EXPECT_EQ(output.size(), sizeof(SqrtParametric_ExpectedOutput::output) / sizeof(float));
+   float* correct = SqrtParametric_ExpectedOutput::output;
+>>>>>>> BinaryUnaryOp_Param
 
    for (size_t i = 0; i < output.size(); i++) {
       EXPECT_LE(std::abs(output[i] - correct[i]), TOLERANCE);

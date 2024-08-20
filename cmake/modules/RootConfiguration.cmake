@@ -521,13 +521,16 @@ endif()
 
 if(webgui)
    set(root_canvas_class "TWebCanvas")
+   set(root_treeviewer_class "RTreeViewer")
+   set(root_geompainter_type "web")
 else()
    set(root_canvas_class "TRootCanvas")
+   set(root_treeviewer_class "TTreeViewer")
+   set(root_geompainter_type "root")
 endif()
 
 if(root7 AND webgui)
-#   set(root_browser_class "ROOT::RWebBrowserImp")
-   set(root_browser_class "TRootBrowser")
+   set(root_browser_class "ROOT::RWebBrowserImp")
 else()
    set(root_browser_class "TRootBrowser")
 endif()
@@ -714,6 +717,11 @@ if(WIN32)
 else()
   # Needed by ACLIC, while in ROOT we are using everywhere C++ standard via CMake features that are requested to build target
   set(CMAKE_CXX_ACLIC_FLAGS "${CMAKE_CXX_FLAGS} ${CMAKE_CXX${CMAKE_CXX_STANDARD}_STANDARD_COMPILE_OPTION}")
+  if(asan)
+    # Replace the semicolon with space so that the produced compiler invokation still makes sense
+    string (REPLACE ";" " " ASAN_EXTRA_CXX_FLAGS_STR "${ASAN_EXTRA_CXX_FLAGS}")
+    set(CMAKE_CXX_ACLIC_FLAGS "${CMAKE_CXX_ACLIC_FLAGS} ${ASAN_EXTRA_CXX_FLAGS_STR}")
+  endif()
   execute_process(COMMAND ${CMAKE_SOURCE_DIR}/build/unix/compiledata.sh
     ${CMAKE_BINARY_DIR}/ginclude/compiledata.h "${CMAKE_CXX_COMPILER}"
         "${CMAKE_CXX_FLAGS_RELEASE}" "${CMAKE_CXX_FLAGS_DEBUG}" "${CMAKE_CXX_ACLIC_FLAGS}"
