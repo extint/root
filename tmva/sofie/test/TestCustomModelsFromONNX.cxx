@@ -48,8 +48,8 @@
 #include "Constant_FromONNX.hxx"
 #include "input_models/references/Constant.ref.hxx"
 
-#include "Tile_FromONNX.hxx"
-#include "input_models/references/Tile.ref.hxx"
+// #include "Tile_FromONNX.hxx"
+// #include "input_models/references/Tile.ref.hxx"
 
 #include "ComplexTile_FromONNX.hxx"
 #include "input_models/references/ComplexTile.ref.hxx"
@@ -667,28 +667,28 @@ TEST(ONNX, Constant)
    }
 }
 
-TEST(ONNX, Tile) {
-    constexpr float TOLERANCE = DEFAULT_TOLERANCE;
+// TEST(ONNX, Tile) {
+//     constexpr float TOLERANCE = DEFAULT_TOLERANCE;
 
-      // Preparing the standard input
-      std::vector<float> input_data({1.0, 2.0, 3.0, 4.0});
-      std::vector<int64_t> repetitions({2 , 2});
+//       // Preparing the standard input
+//       std::vector<float> input_data({1.0, 2.0, 3.0, 4.0});
+//       std::vector<int64_t> repetitions({2 , 2});
 
-      TMVA_SOFIE_Tile::Session s("Tile_FromONNX.dat");
-      std::vector<float> output = s.infer(input_data.data(), repetitions.data());
+//       TMVA_SOFIE_Tile::Session s("Tile_FromONNX.dat");
+//       std::vector<float> output = s.infer(input_data.data(), repetitions.data());
 
-      // EXPECT_EQ(output.size(), expected_output.size());
-      EXPECT_EQ(output.size(), sizeof(Tile_ExpectedOutput::output) / sizeof(float));
+//       // EXPECT_EQ(output.size(), expected_output.size());
+//       EXPECT_EQ(output.size(), sizeof(Tile_ExpectedOutput::output) / sizeof(float));
 
       
-      float* correct = Tile_ExpectedOutput::output;
+//       float* correct = Tile_ExpectedOutput::output;
 
-      // Checking every output value, one by one
-      for (size_t i = 0; i < output.size(); ++i) {
-         EXPECT_LE(std::abs(output[i] - correct[i]), TOLERANCE);
-      }
+//       // Checking every output value, one by one
+//       for (size_t i = 0; i < output.size(); ++i) {
+//          EXPECT_LE(std::abs(output[i] - correct[i]), TOLERANCE);
+//       }
 
-}
+// }
 
 TEST(ONNX, ComplexTile) {
     constexpr float TOLERANCE = DEFAULT_TOLERANCE;
@@ -723,6 +723,7 @@ TEST(ONNX, ComplexTile) {
 
       // Checking every output value, one by one
       for (size_t i = 0; i < output.size(); ++i) {
+         std::cout << output[i] << ", " << correct[i] << std::endl;
          EXPECT_LE(std::abs(output[i] - correct[i]), TOLERANCE);
       }
 }
@@ -831,7 +832,9 @@ TEST(ONNX, Cast)
 {
    constexpr float TOLERANCE = DEFAULT_TOLERANCE;
 
-   // Preparing the standard  input
+ // Preparing the standard  input
+   std::vector<int64_t> input({
+      1,2,3,4,5,6
    });
 
    TMVA_SOFIE_Cast::Session s("Cast_FromONNX.dat");

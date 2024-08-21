@@ -13,6 +13,7 @@ namespace TMVA{
 namespace Experimental{
 namespace SOFIE{
 
+template <typename T>
 class ROperator_Gather final : public ROperator
 {
 private:

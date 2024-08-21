@@ -688,14 +688,9 @@ void RModel::ReadInitializedTensorsFromFile(long pos) {
 
         // loop on tensors and parse the file
         for (auto& i: fInitializedTensors) {
-<<<<<<< HEAD
-             // skip Constant tensors
-            if (i.second.IsConstantTensor()) continue;
-=======
             // skip Constant and shape tensors
             if (!i.second.IsWeightTensor()) continue;
             std::string tensor_name = "tensor_" + i.first;
->>>>>>> BinaryUnaryOp_Param
             if (i.second.type() == ETensorType::FLOAT) {
                 size_t length = 1;
                 length = ConvertShapeToLength(i.second.shape());
@@ -716,11 +711,8 @@ void RModel::ReadInitializedTensorsFromFile(long pos) {
                 fGC += "   if (f.fail()) {\n";
                 fGC += "      throw std::runtime_error(\"TMVA-SOFIE failed to read the values for tensor " + tensor_name + "\");\n";
                 fGC += "   }\n";
-<<<<<<< HEAD
-=======
             } else {
                std::runtime_error("tmva-sofie tensor " + tensor_name + " with type " + ConvertTypeToString(i.second.type()) + " cannot be read from a file");
->>>>>>> BinaryUnaryOp_Param
             }
         }
         fGC += "   f.close();\n";
@@ -797,13 +789,8 @@ long RModel::WriteInitializedTensorsToFile(std::string filename) {
         auto outputDir = outputFile->mkdir(dirName.c_str());
 
         for (const auto& item : fInitializedTensors) {
-<<<<<<< HEAD
-            // skip Constant tensors
-            if (item.second.IsConstantTensor()) continue;
-=======
             // skip Constant tensors and tensors which are not writable (e.g. shape tensors)
             if (!item.second.IsWeightTensor()) continue;
->>>>>>> BinaryUnaryOp_Param
             std::string tensorName = "tensor_" + item.first;
             size_t length = 1;
             length = ConvertShapeToLength(item.second.shape());
@@ -844,15 +831,8 @@ long RModel::WriteInitializedTensorsToFile(std::string filename) {
             throw
             std::runtime_error("tmva-sofie failed to open file " + filename + " for tensor weight data");
         for (auto& i: fInitializedTensors) {
-<<<<<<< HEAD
-             // skip Constant tensors
-            //if (i.second.IsConstantTensor()) continue;
-            if (i.second.IsConstantTensor()) {
-               //std::cout << "skip constant tensor " << i.first << std::endl;
-=======
              // skip Constant tensors and not writable tensors (e.g. shape tensors)
             if (!i.second.IsWeightTensor()) {
->>>>>>> BinaryUnaryOp_Param
                continue;
             }
             size_t length = ConvertShapeToLength(i.second.shape());
@@ -868,12 +848,9 @@ long RModel::WriteInitializedTensorsToFile(std::string filename) {
                   f <<  ( (idx < length-1) ? " " : "\n" );
                }
             }
-<<<<<<< HEAD
-=======
             else {
                std::runtime_error("tmva-sofie tensor " + tensor_name + " with type " + ConvertTypeToString(i.second.type()) + " cannot be written to a file");
             }
->>>>>>> BinaryUnaryOp_Param
             if (f.fail())
                std::runtime_error("tmva-sofie failed to write tensor data to file for  " + tensor_name);
         }
@@ -927,10 +904,7 @@ void RModel::PrintInitializedTensors() {
         }
         std::cout << "]";
         if (it.second.IsConstantTensor()) std::cout << " (Constant)";
-<<<<<<< HEAD
-=======
         else if (!it.second.IsWeightTensor()) std::cout << " (Not Writable)";
->>>>>>> BinaryUnaryOp_Param
         std::cout << std::endl;
     }
     std::cout << "\n";

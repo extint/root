@@ -93,13 +93,10 @@ public:
    std::shared_ptr<void> const &sharedptr() const { return fData; }
    // query if tensor comes from a Constant operator
    bool IsConstantTensor() const { return fConstant;}
-<<<<<<< HEAD
-=======
    // query if tensor needs to be written in a weight file
    bool IsWeightTensor() const { return !fConstant && !fIsNotWritable;}
 
    void SetNotWritable() { fIsNotWritable = true;}
->>>>>>> BinaryUnaryOp_Param
 
    template <class T = void>
    T const *data() const
@@ -151,15 +148,10 @@ public:
    }
 
 private:
-<<<<<<< HEAD
-   bool        fConstant = false;   ///< Flag specifying if tensor is a Constant one (coming from a Constant operator)
-=======
    bool  fConstant = false;      ///< Flag specifying if tensor is a Constant one (coming from a Constant operator)
    bool  fIsNotWritable = false; ///< Flag to indicate that tensor values do not need to be written as weight or generated code
->>>>>>> BinaryUnaryOp_Param
    ETensorType fType;               ///< Encodes the type of the data
    std::vector<std::size_t> fShape; ///< The shape of the data in terms of elements in each dimension
-   // std::vector<Dim> fShape; ///< The shape of the data in terms of elements in each dimension
    std::shared_ptr<void> fData;     ///<! Transient shared data
    int fSize = 0;                   ///< The size of the persistent data in bytes (not number of elements!)
    char *fPersistentData = nullptr; ///<[fSize] Persistent version of the data
