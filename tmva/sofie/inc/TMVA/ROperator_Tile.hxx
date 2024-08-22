@@ -20,8 +20,9 @@ private:
    std::string fNInput;
    std::string fNRepeats;
    std::string fNY;
-   std::vector<size_t>fShapeInput;
-   std::vector<size_t> fShapeY;
+   std::vector<Dim>fShapeInput;
+   std::vector<Dim> fShapeY;
+   bool fIsDynamic = false;
 
 public:
    ROperator_Tile(){}
@@ -32,15 +33,15 @@ public:
       return input;
    }
 
-   std::vector<std::vector<size_t>> ShapeInference(std::vector<std::vector<size_t>> input){
-      std::vector<size_t> ret = input[0];
+   std::vector<std::vector<Dim>> ShapeInference(std::vector<std::vector<Dim>> input){
+      std::vector<Dim> ret = input[0];
+      ret.isParam = true;
 
-      for(auto i : input[0]) std::cout << i << " ";
-      std::cout << std::endl;
-      for(auto i : input[1]) std::cout << i << " ";
-      std::cout << std::endl;
       for(size_t i=0; i < input[1].size(); i++) {
-            ret[i]=ret[i]*input[1][i];
+         if(!fIsDynamic)
+            ret[i].dim=ret[i].dim*input[1][i].dim;
+         else
+            ret[i].param=ret[i].param + "*" + input[1][i].GetVal();
       }
       return {ret};
    }
@@ -53,8 +54,10 @@ public:
       if (model.CheckIfTensorAlreadyExist(fNRepeats) == false){
         throw std::runtime_error("TMVA SOFIE Tile Op Input Tensor is not found in model");
       }
-      fShapeInput=model.GetTensorShape(fNInput);
-      std::cout<<model.IsInitializedTensor(fNRepeats)<<"\n";
+      if(model.isInitializedTensor(fNInputs) || model.isDynamicTensor(fNInputs))
+         fIsDynamic = true;
+      fShapeInput=model.GetDynamicTensorShape(fNInput);
+     // std::cout<<model.IsInitializedTensor(fNRepeats)<<"\n";
 
          // Retrieve the data pointer for the repeats tensor
       auto repptr = model.GetInitializedTensorData(fNRepeats);
@@ -75,9 +78,9 @@ public:
       std::vector<size_t> repeats_vector(repeat_shape, repeat_shape + num_elements);
 
       // std::vector<size_t> repeat_shape=model.GetTensorShape(fNRepeats);
-      fShapeY = ShapeInference({fShapeInput,repeats_vector})[0];
-      for(auto i : fShapeY) std::cout << i << " ";
-      std::cout << std::endl;
+      fShapeY = ShapeInference({fShapeInput,ConvertShapetoDim(repeats_vector)})[0];
+      //for(auto i : fShapeY) std::cout << i << " ";
+     // std::cout << std::endl;
   
       model.AddIntermediateTensor(fNY, model.GetTensorType(fNInput), fShapeY);
    }
@@ -88,13 +91,13 @@ public:
             throw std::runtime_error("TMVA SOFIE Tile Op called to Generate without being initialized first");
       }
 
-      size_t input_length = ConvertShapeToLength(fShapeInput);
-      size_t output_length = ConvertShapeToLength(fShapeY);
+      std::string input_length = ConvertDynamicShapeToLength(fShapeInput);
+      std::string output_length = ConvertDynamicShapeToLength(fShapeY);
 
       std::stringstream out;
       out << "///-------- Tile operator\n";
-      out << "std::vector<size_t> input_shape = " << ConvertShapeToString(fShapeInput) << ";\n";
-      out << "std::vector<size_t> output_shape = " << ConvertShapeToString(fShapeY) << ";\n";
+      out << "std::vector<size_t> input_shape = " << ConvertDynamicShapeToString(fShapeInput) << ";\n";
+      out << "std::vector<size_t> output_shape = " << ConvertDynamicShapeToString(fShapeY) << ";\n";
       out << "std::vector<size_t> indices(input_shape.size(), 0);\n";
       out << "for (size_t i = 0; i < " << output_length << "; ++i) {\n";
       out << SP<<"size_t source_index = 0;\n";
