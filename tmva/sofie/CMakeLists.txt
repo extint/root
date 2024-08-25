@@ -28,6 +28,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ROOTTMVASofie
    TMVA/ROperator_Tanh.hxx
    TMVA/ROperator_LeakyRelu.hxx
    TMVA/ROperator_Reshape.hxx
+   TMVA/ROperator_Split.hxx
    TMVA/ROperator_Selu.hxx
    TMVA/ROperator_Sigmoid.hxx
    TMVA/ROperator_Slice.hxx
