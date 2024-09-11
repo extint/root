@@ -61,6 +61,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ROOTTMVASofieParser
     src/ParseComparision.cxx
     src/ParseEyeLike.cxx
     src/ParseConstant.cxx
+    src/ParseRandomNormalLike.cxx
     src/ParseTopK.cxx
     src/ParseTile.cxx
     src/ParseSplit.cxx
