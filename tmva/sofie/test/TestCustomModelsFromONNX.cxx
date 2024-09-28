@@ -45,6 +45,12 @@
 #include "Tanh_FromONNX.hxx"
 #include "input_models/references/Tanh.ref.hxx"
 
+#include "Sin_FromONNX.hxx"
+#include "input_models/references/Sin.ref.hxx"
+
+#include "Cos_FromONNX.hxx"
+#include "input_models/references/Cos.ref.hxx"
+
 #include "Erf_FromONNX.hxx"
 #include "input_models/references/Erf.ref.hxx"
 
@@ -642,6 +648,55 @@ TEST(ONNX, Tanh)
       EXPECT_LE(std::abs(output[i] - correct[i]), TOLERANCE);
    }
 }
+
+TEST(ONNX, Sin)
+{
+   constexpr float TOLERANCE = DEFAULT_TOLERANCE;
+
+   // Preparing the random input
+   std::vector<float> input({
+     0., 1.5707964, 3.1415927, 4.712389
+   });
+
+   TMVA_SOFIE_Sin::Session s("Sin_FromONNX.dat");
+
+   std::vector<float> output = s.infer(input.data());
+
+   // Checking output size
+   EXPECT_EQ(output.size(), sizeof(Sin_ExpectedOutput::outputs) / sizeof(float));
+
+   float *correct = Sin_ExpectedOutput::outputs;
+
+   // Checking every output value, one by one
+   for (size_t i = 0; i < output.size(); ++i) {
+      EXPECT_LE(std::abs(output[i] - correct[i]), TOLERANCE);
+   }
+}
+
+TEST(ONNX, Cos)
+{
+   constexpr float TOLERANCE = DEFAULT_TOLERANCE;
+
+   // Preparing the random input
+   std::vector<float> input({
+     0., 1.5707964, 3.1415927, 4.712389
+   });
+
+   TMVA_SOFIE_Cos::Session s("Cos_FromONNX.dat");
+
+   std::vector<float> output = s.infer(input.data());
+
+   // Checking output size
+   EXPECT_EQ(output.size(), sizeof(Cos_ExpectedOutput::outputs) / sizeof(float));
+
+   float *correct = Cos_ExpectedOutput::outputs;
+
+   // Checking every output value, one by one
+   for (size_t i = 0; i < output.size(); ++i) {
+      EXPECT_LE(std::abs(output[i] - correct[i]), TOLERANCE);
+   }
+}
+
 
 TEST(ONNX, Erf)
 {
